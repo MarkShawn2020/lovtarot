@@ -1,16 +1,13 @@
-// TTS 服务 - 豆包语音合成 (HTTP V3 接口)
+// TTS 服务 - 豆包语音合成 (WebSocket 二进制协议)
 
-// V3 HTTP 单向流式接口，支持大模型音色 2.0
-const DOUBAO_TTS_HTTP_URL = 'https://openspeech.bytedance.com/api/v3/tts/unidirectional'
+const DOUBAO_TTS_WS_URL = 'wss://openspeech.bytedance.com/api/v1/tts/ws_binary'
 
-// 从环境变量读取配置
 const getConfig = () => ({
   appId: import.meta.env.VITE_DOUBAO_TTS_APP_ID || '',
   accessToken: import.meta.env.VITE_DOUBAO_TTS_ACCESS_TOKEN || '',
   voiceType: import.meta.env.VITE_DOUBAO_TTS_VOICE_TYPE || 'zh_female_vv_uranus_bigtts',
 })
 
-// 生成 UUID
 function generateUUID(): string {
   return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
     const r = (Math.random() * 16) | 0
@@ -19,10 +16,137 @@ function generateUUID(): string {
   })
 }
 
-// 当前播放状态
+// 二进制协议常量
+enum MsgType {
+  FullClientRequest = 0b0001,
+  AudioOnlyServer = 0b1011,
+  FrontEndResultServer = 0b1100,
+  Error = 0b1111,
+}
+
+enum MsgTypeFlagBits {
+  NoSeq = 0,
+  PositiveSeq = 0b0001,
+  NegativeSeq = 0b0011,
+}
+
+enum HeaderSizeBits {
+  HeaderSize4 = 1,
+}
+
+enum VersionBits {
+  Version1 = 1,
+}
+
+enum SerializationBits {
+  JSON = 0b0001,
+}
+
+enum CompressionBits {
+  None = 0,
+}
+
+// 序列化请求消息
+function marshalMessage(payload: Uint8Array): Uint8Array {
+  const headerSize = 4
+  const payloadSize = payload.length
+
+  // Header (4 bytes) + payload size (4 bytes) + payload
+  const result = new Uint8Array(headerSize + 4 + payloadSize)
+
+  // Byte 0: version (4 bits) | header size (4 bits)
+  result[0] = (VersionBits.Version1 << 4) | HeaderSizeBits.HeaderSize4
+  // Byte 1: msg type (4 bits) | flag (4 bits)
+  result[1] = (MsgType.FullClientRequest << 4) | MsgTypeFlagBits.NoSeq
+  // Byte 2: serialization (4 bits) | compression (4 bits)
+  result[2] = (SerializationBits.JSON << 4) | CompressionBits.None
+  // Byte 3: reserved
+  result[3] = 0
+
+  // Payload size (big endian)
+  const view = new DataView(result.buffer, headerSize, 4)
+  view.setUint32(0, payloadSize, false)
+
+  // Payload
+  result.set(payload, headerSize + 4)
+
+  return result
+}
+
+// 解析响应消息
+interface ParsedMessage {
+  type: MsgType
+  flag: number
+  sequence?: number
+  payload: Uint8Array
+  errorCode?: number
+}
+
+function unmarshalMessage(data: Uint8Array): ParsedMessage {
+  if (data.length < 4) {
+    throw new Error(`Data too short: ${data.length}`)
+  }
+
+  const headerSizeUnits = data[0] & 0x0f
+  const headerSize = headerSizeUnits * 4
+  const msgType = (data[1] >> 4) as MsgType
+  const flag = data[1] & 0x0f
+
+  let offset = headerSize
+  let sequence: number | undefined
+  let errorCode: number | undefined
+
+  // 读取 sequence（如果有）
+  if (msgType === MsgType.AudioOnlyServer || msgType === MsgType.FrontEndResultServer) {
+    if (flag === MsgTypeFlagBits.PositiveSeq || flag === MsgTypeFlagBits.NegativeSeq) {
+      if (offset + 4 > data.length) {
+        throw new Error('Insufficient data for sequence')
+      }
+      const view = new DataView(data.buffer, data.byteOffset + offset, 4)
+      sequence = view.getInt32(0, false)
+      offset += 4
+    }
+  }
+
+  // 读取 error code（如果是错误消息）
+  if (msgType === MsgType.Error) {
+    if (offset + 4 > data.length) {
+      throw new Error('Insufficient data for error code')
+    }
+    const view = new DataView(data.buffer, data.byteOffset + offset, 4)
+    errorCode = view.getUint32(0, false)
+    offset += 4
+  }
+
+  // 读取 payload size
+  if (offset + 4 > data.length) {
+    throw new Error('Insufficient data for payload size')
+  }
+  const payloadView = new DataView(data.buffer, data.byteOffset + offset, 4)
+  const payloadSize = payloadView.getUint32(0, false)
+  offset += 4
+
+  // 读取 payload
+  let payload = new Uint8Array(0)
+  if (payloadSize > 0) {
+    if (offset + payloadSize > data.length) {
+      throw new Error('Insufficient data for payload')
+    }
+    payload = data.slice(offset, offset + payloadSize)
+  }
+
+  return { type: msgType, flag, sequence, payload, errorCode }
+}
+
+function voiceTypeToCluster(voiceType: string): string {
+  if (voiceType.startsWith('S_')) {
+    return 'volcano_icl'
+  }
+  return 'volcano_tts'
+}
+
 let currentAudio: HTMLAudioElement | null = null
 
-// 使用豆包 TTS (HTTP 流式)
 async function speakWithDoubao(text: string): Promise<void> {
   const config = getConfig()
 
@@ -31,100 +155,110 @@ async function speakWithDoubao(text: string): Promise<void> {
     return speakWithBrowserTTS(text)
   }
 
-  const payload = {
-    app: {
-      appid: config.appId,
-      token: 'fake_token',
-      cluster: 'volcano_tts',
-    },
-    user: {
-      uid: 'web_user',
-    },
-    audio: {
-      voice_type: config.voiceType,
-      encoding: 'mp3',
-      speed_ratio: 1.0,
-      rate: 24000,
-    },
-    request: {
-      reqid: generateUUID(),
-      text: text,
-      operation: 'submit',
-    },
-  }
+  return new Promise((resolve, reject) => {
+    // 浏览器 WebSocket 不支持自定义 headers，需要通过 URL 参数传递
+    const wsUrl = `${DOUBAO_TTS_WS_URL}?authorization=Bearer;${encodeURIComponent(config.accessToken)}`
+    const ws = new WebSocket(wsUrl)
+    ws.binaryType = 'arraybuffer'
 
-  const response = await fetch(DOUBAO_TTS_HTTP_URL, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer;${config.accessToken}`,
-    },
-    body: JSON.stringify(payload),
-  })
+    const audioChunks: Uint8Array[] = []
+    let connected = false
 
-  if (!response.ok) {
-    const errorText = await response.text()
-    throw new Error(`TTS 请求失败: ${response.status} ${errorText}`)
-  }
+    ws.onopen = () => {
+      connected = true
+      const request = {
+        app: {
+          appid: config.appId,
+          token: config.accessToken,
+          cluster: voiceTypeToCluster(config.voiceType),
+        },
+        user: {
+          uid: 'web_user_' + generateUUID(),
+        },
+        audio: {
+          voice_type: config.voiceType,
+          encoding: 'mp3',
+        },
+        request: {
+          reqid: generateUUID(),
+          text: text,
+          operation: 'submit',
+        },
+      }
 
-  // 读取流式响应
-  const reader = response.body?.getReader()
-  if (!reader) {
-    throw new Error('无法读取响应流')
-  }
+      const payload = new TextEncoder().encode(JSON.stringify(request))
+      const message = marshalMessage(payload)
+      ws.send(message)
+    }
 
-  const audioChunks: Uint8Array[] = []
+    ws.onmessage = (event) => {
+      try {
+        const data = new Uint8Array(event.data as ArrayBuffer)
+        const msg = unmarshalMessage(data)
 
-  while (true) {
-    const { done, value } = await reader.read()
-    if (done) break
+        if (msg.type === MsgType.Error) {
+          const errorText = new TextDecoder().decode(msg.payload)
+          ws.close()
+          reject(new Error(`TTS Error (${msg.errorCode}): ${errorText}`))
+          return
+        }
 
-    // V3 HTTP 流式响应：每个 chunk 前 4 字节是 header，后面是音频数据
-    if (value && value.length > 4) {
-      const audioData = value.slice(4)
-      if (audioData.length > 0) {
-        audioChunks.push(audioData)
+        if (msg.type === MsgType.AudioOnlyServer && msg.payload.length > 0) {
+          audioChunks.push(msg.payload)
+        }
+
+        // sequence < 0 表示最后一个包
+        if (msg.type === MsgType.AudioOnlyServer && msg.sequence !== undefined && msg.sequence < 0) {
+          ws.close()
+        }
+      } catch (e) {
+        ws.close()
+        reject(e)
       }
     }
-  }
 
-  if (audioChunks.length === 0) {
-    throw new Error('未收到音频数据')
-  }
-
-  // 合并音频数据
-  const totalLength = audioChunks.reduce((sum, chunk) => sum + chunk.length, 0)
-  const audioBuffer = new Uint8Array(totalLength)
-  let offset = 0
-  for (const chunk of audioChunks) {
-    audioBuffer.set(chunk, offset)
-    offset += chunk.length
-  }
-
-  // 播放音频
-  return new Promise((resolve, reject) => {
-    const blob = new Blob([audioBuffer], { type: 'audio/mpeg' })
-    const url = URL.createObjectURL(blob)
-
-    currentAudio = new Audio(url)
-
-    currentAudio.onended = () => {
-      URL.revokeObjectURL(url)
-      currentAudio = null
-      resolve()
+    ws.onerror = (e) => {
+      reject(new Error(`WebSocket error: ${e}`))
     }
 
-    currentAudio.onerror = (e) => {
-      URL.revokeObjectURL(url)
-      currentAudio = null
-      reject(e)
-    }
+    ws.onclose = () => {
+      if (audioChunks.length === 0) {
+        if (connected) {
+          reject(new Error('未收到音频数据'))
+        }
+        return
+      }
 
-    currentAudio.play().catch(reject)
+      // 合并音频并播放
+      const totalLength = audioChunks.reduce((sum, chunk) => sum + chunk.length, 0)
+      const audioBuffer = new Uint8Array(totalLength)
+      let offset = 0
+      for (const chunk of audioChunks) {
+        audioBuffer.set(chunk, offset)
+        offset += chunk.length
+      }
+
+      const blob = new Blob([audioBuffer], { type: 'audio/mpeg' })
+      const url = URL.createObjectURL(blob)
+      currentAudio = new Audio(url)
+
+      currentAudio.onended = () => {
+        URL.revokeObjectURL(url)
+        currentAudio = null
+        resolve()
+      }
+
+      currentAudio.onerror = (e) => {
+        URL.revokeObjectURL(url)
+        currentAudio = null
+        reject(e)
+      }
+
+      currentAudio.play().catch(reject)
+    }
   })
 }
 
-// 浏览器内置 TTS（后备方案）
 function speakWithBrowserTTS(text: string): Promise<void> {
   return new Promise((resolve, reject) => {
     if (!window.speechSynthesis) {
