@@ -2,7 +2,7 @@ import OpenAI from 'openai'
 import type { TarotCard } from '../data/tarot'
 
 const client = new OpenAI({
-  baseURL: 'https://api.openai.com/v1',
+  baseURL: 'https://zenmux.ai/api/v1',
   apiKey: import.meta.env.VITE_ZENMUX_API_KEY,
   dangerouslyAllowBrowser: true
 })
@@ -39,7 +39,7 @@ ${cardInfo}
 请为用户做一个温暖、有洞见的解读，帮助 ta 看见当下的状态，获得启发和力量。`
 
   const response = await client.chat.completions.create({
-    model: 'gpt-5.2',
+    model: 'google/gemini-3-pro-preview',
     messages: [
       { role: 'system', content: SYSTEM_PROMPT },
       { role: 'user', content: userPrompt }
