@@ -25,7 +25,11 @@ const SYSTEM_PROMPT = `你是一位温暖、有智慧的塔罗牌解读师。你
 - 不要逐条列出，用自然的段落
 - 控制在 300-400 字左右`
 
-export async function getReading(question: string, cards: TarotCard[]): Promise<string> {
+export async function getReadingStream(
+  question: string,
+  cards: TarotCard[],
+  onChunk: (text: string) => void
+): Promise<void> {
   const cardInfo = cards.map((card, i) => {
     const position = ['过去', '现在', '未来'][i]
     return `${position}：${card.name}（${card.nameEn}）- 关键词：${card.keywords.join('、')} - 基础含义：${card.meaning}`
@@ -38,15 +42,21 @@ ${cardInfo}
 
 请为用户做一个温暖、有洞见的解读，帮助 ta 看见当下的状态，获得启发和力量。`
 
-  const response = await client.chat.completions.create({
+  const stream = await client.chat.completions.create({
     model: 'google/gemini-3-pro-preview',
     messages: [
       { role: 'system', content: SYSTEM_PROMPT },
       { role: 'user', content: userPrompt }
     ],
     temperature: 0.8,
-    max_tokens: 800
+    max_tokens: 4096,
+    stream: true
   })
 
-  return response.choices[0]?.message?.content || '无法生成解读，请稍后重试。'
+  for await (const chunk of stream) {
+    const content = chunk.choices[0]?.delta?.content
+    if (content) {
+      onChunk(content)
+    }
+  }
 }
