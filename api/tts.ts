@@ -1,5 +1,5 @@
-// Vercel Serverless Function: TTS V3 流式代理
-// 调用火山引擎豆包 TTS 单向流式 HTTP API V3
+// Vercel Serverless Function: TTS HTTP API 代理
+// 调用火山引擎豆包 TTS v1 HTTP API
 
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 
@@ -8,15 +8,13 @@ export const config = {
   maxDuration: 60,
 }
 
-const TTS_V3_ENDPOINT = 'https://openspeech.bytedance.com/api/v3/tts/unidirectional'
+const TTS_HTTP_ENDPOINT = 'https://openspeech.bytedance.com/api/v1/tts'
 
 interface TTSRequestBody {
   text: string
   voiceType?: string
   encoding?: string
-  sampleRate?: number
   speedRatio?: number
-  loudnessRatio?: number
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -49,31 +47,38 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     const voiceType = (body.voiceType || process.env.VITE_DOUBAO_TTS_VOICE_TYPE || 'zh_female_wanqudashu_moon_bigtts').trim()
-    // 根据音色自动选择 resourceId
-    const resourceId = process.env.VITE_DOUBAO_TTS_RESOURCE_ID || (voiceType.startsWith('S_') ? 'seed-icl-1.0' : 'seed-tts-1.0')
+    // 根据音色自动选择 cluster
+    const cluster = voiceType.startsWith('S_') ? 'volcano_icl' : 'volcano_tts'
 
     const ttsBody = {
-      user: { uid: 'vercel_user_' + Date.now() },
-      req_params: {
+      app: {
+        appid: appId,
+        token: accessToken,
+        cluster: cluster,
+      },
+      user: {
+        uid: 'vercel_user_' + Date.now(),
+      },
+      audio: {
+        voice_type: voiceType,
+        encoding: body.encoding || 'mp3',
+        speed_ratio: body.speedRatio || 1.0,
+        rate: 24000,
+        bitrate: 160,
+        loudness_ratio: 1.0,
+      },
+      request: {
+        reqid: crypto.randomUUID(),
         text: body.text,
-        speaker: voiceType,
-        audio_params: {
-          format: body.encoding || 'mp3',
-          sample_rate: body.sampleRate || 24000,
-          speech_rate: Math.round((body.speedRatio || 1.0 - 1) * 100), // 转换为 [-50, 100] 范围
-          loudness_rate: Math.round((body.loudnessRatio || 1.0 - 1) * 100),
-        },
+        operation: 'query',
       },
     }
 
-    const response = await fetch(TTS_V3_ENDPOINT, {
+    const response = await fetch(TTS_HTTP_ENDPOINT, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'X-Api-App-Id': appId,
-        'X-Api-Access-Key': accessToken,
-        'X-Api-Resource-Id': resourceId,
-        'X-Api-Request-Id': crypto.randomUUID(),
+        'Authorization': `Bearer;${accessToken}`,
       },
       body: JSON.stringify(ttsBody),
     })
@@ -84,69 +89,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(502).json({ error: 'TTS service error', details: errorText })
     }
 
-    // V3 API 返回流式 JSON，每行是一个 JSON 对象
-    // 收集所有音频数据
-    const audioChunks: string[] = []
-    const reader = response.body?.getReader()
-    const decoder = new TextDecoder()
-    let buffer = ''
+    const result = await response.json() as { code: number; data?: string; message?: string }
 
-    if (!reader) {
-      return res.status(502).json({ error: 'No response body' })
+    if (result.code !== 3000) {
+      console.error('[TTS API] Error:', result.message, 'code:', result.code)
+      return res.status(400).json({ error: result.message || 'TTS failed', code: result.code })
     }
 
-    while (true) {
-      const { done, value } = await reader.read()
-      if (done) break
-
-      buffer += decoder.decode(value, { stream: true })
-
-      // 按行解析 JSON
-      const lines = buffer.split('\n')
-      buffer = lines.pop() || '' // 最后一行可能不完整
-
-      for (const line of lines) {
-        if (!line.trim()) continue
-        try {
-          const data = JSON.parse(line) as { code: number; data?: string; message?: string }
-          if (data.code === 20000000) {
-            // 成功结束
-            break
-          } else if (data.code !== 0) {
-            console.error('[TTS API] Error:', data.message)
-            return res.status(400).json({ error: data.message, code: data.code })
-          } else if (data.data) {
-            audioChunks.push(data.data)
-          }
-        } catch {
-          // 忽略解析错误
-        }
-      }
-    }
-
-    // 处理剩余 buffer
-    if (buffer.trim()) {
-      try {
-        const data = JSON.parse(buffer) as { code: number; data?: string; message?: string }
-        if (data.data) {
-          audioChunks.push(data.data)
-        }
-      } catch {
-        // 忽略
-      }
-    }
-
-    if (audioChunks.length === 0) {
-      return res.status(502).json({ error: 'No audio data received' })
-    }
-
-    // 合并 base64 音频数据
-    // 注意：直接拼接 base64 是不正确的，需要先解码再合并再编码
-    // 但对于 mp3 格式，可以直接拼接二进制数据
-    const binaryChunks = audioChunks.map((chunk) => Buffer.from(chunk, 'base64'))
-    const combinedAudio = Buffer.concat(binaryChunks)
-
-    return res.status(200).json({ audio: combinedAudio.toString('base64') })
+    // 返回 base64 音频数据
+    return res.status(200).json({ audio: result.data })
   } catch (e) {
     console.error('[TTS API] Error:', e)
     return res.status(500).json({ error: 'Internal error', details: String(e) })
