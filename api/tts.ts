@@ -3,6 +3,11 @@
 
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 
+// 增加超时时间到 60 秒（Hobby 计划最大）
+export const config = {
+  maxDuration: 60,
+}
+
 const TTS_V3_ENDPOINT = 'https://openspeech.bytedance.com/api/v3/tts/unidirectional'
 
 interface TTSRequestBody {
