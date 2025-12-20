@@ -1,23 +1,25 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import type { TarotCard } from '../data/tarot'
 import { getReadingStream } from '../services/ai'
-import { StreamingTTS, splitTextToSentences } from '../services/tts-streaming'
+import { StreamingTTS, SentenceBuffer } from '../services/tts-streaming'
 import { registerTTS, unregisterTTS, notifyListeners } from '../services/tts-control'
 
 interface Props {
   question: string
   cards: TarotCard[]
   cachedReading?: string
-  onComplete?: (reading: string) => void
+  cachedReasoning?: string
+  onComplete?: (reading: string, reasoning: string) => void
 }
 
 export function ReadingResult({
   question,
   cards,
   cachedReading,
+  cachedReasoning,
   onComplete,
 }: Props) {
-  const [reasoning, setReasoning] = useState('')
+  const [reasoning, setReasoning] = useState(cachedReasoning || '')
   const [reasoningExpanded, setReasoningExpanded] = useState(false)
   const [reading, setReading] = useState(cachedReading || '')
   const [isStreaming, setIsStreaming] = useState(!cachedReading)
@@ -26,7 +28,7 @@ export function ReadingResult({
   const [ignoreCache, setIgnoreCache] = useState(false)
 
   const ttsRef = useRef<StreamingTTS | null>(null)
-  const sentSentencesRef = useRef<Set<string>>(new Set())
+  const sentenceBufferRef = useRef<SentenceBuffer | null>(null)
   const isSpeakingRef = useRef(false)
   const readingRef = useRef(reading)
   const isStreamingRef = useRef(isStreaming)
@@ -40,16 +42,23 @@ export function ReadingResult({
     isStreamingRef.current = isStreaming
   }, [isStreaming])
 
-  // 发送新句子到 TTS
+  // 发送新完整句子到 TTS
   const sendNewSentences = useCallback((text: string) => {
-    if (!ttsRef.current) return
+    if (!ttsRef.current || !sentenceBufferRef.current) return
 
-    const sentences = splitTextToSentences(text)
-    for (const sentence of sentences) {
-      if (!sentSentencesRef.current.has(sentence)) {
-        sentSentencesRef.current.add(sentence)
-        ttsRef.current.sendText(sentence)
-      }
+    const newSentences = sentenceBufferRef.current.addText(text)
+    for (const sentence of newSentences) {
+      ttsRef.current.sendText(sentence)
+    }
+  }, [])
+
+  // 流结束时发送剩余内容
+  const flushRemaining = useCallback(() => {
+    if (!ttsRef.current || !sentenceBufferRef.current) return
+
+    const remaining = sentenceBufferRef.current.flush()
+    if (remaining) {
+      ttsRef.current.sendText(remaining)
     }
   }, [])
 
@@ -69,18 +78,19 @@ export function ReadingResult({
 
       await ttsRef.current.start()
       isSpeakingRef.current = true
-      sentSentencesRef.current.clear()
+      sentenceBufferRef.current = new SentenceBuffer()
       sendNewSentences(readingRef.current)
       notifyListeners()
 
       if (!isStreamingRef.current) {
+        flushRemaining()
         ttsRef.current.finish()
       }
     } catch (err) {
       console.error('[TTS] Start error:', err)
       ttsRef.current = null
     }
-  }, [sendNewSentences])
+  }, [sendNewSentences, flushRemaining])
 
   // 停止 TTS
   const stopTTS = useCallback(() => {
@@ -104,7 +114,7 @@ export function ReadingResult({
   // 重试
   const handleRetry = useCallback(() => {
     stopTTS()
-    sentSentencesRef.current.clear()
+    sentenceBufferRef.current?.clear()
     setReasoning('')
     setReasoningExpanded(false)
     setReading('')
@@ -149,8 +159,9 @@ export function ReadingResult({
         })
 
         if (!cancelled) {
-          onComplete?.(fullReading)
+          onComplete?.(fullReading, fullReasoning)
           if (ttsRef.current) {
+            flushRemaining()
             ttsRef.current.finish()
           }
         }
@@ -172,7 +183,7 @@ export function ReadingResult({
       cancelled = true
       stopTTS()
     }
-  }, [question, cards, cachedReading, ignoreCache, onComplete, sendNewSentences, startTTS, stopTTS, retryCount])
+  }, [question, cards, cachedReading, ignoreCache, onComplete, sendNewSentences, flushRemaining, startTTS, stopTTS, retryCount])
 
   // 注册到全局 TTS 控制
   useEffect(() => {
