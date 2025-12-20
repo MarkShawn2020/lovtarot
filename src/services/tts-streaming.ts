@@ -1,17 +1,11 @@
 // TTS HTTP 流式语音合成服务
-// 支持边生成文本边播放语音
-
-// TTS 代理地址（支持 https 或 wss 前缀，自动转换）
-const getTTSProxyUrl = () => {
-  const url = import.meta.env.VITE_TTS_PROXY_URL || ''
-  // 移除 wss:// 或 ws:// 前缀，转换为 https://
-  return url.replace(/^wss?:\/\//, 'https://')
-}
+// 直接调用 /api/tts (Vercel Serverless Function)
 
 const getConfig = () => ({
   appId: import.meta.env.VITE_DOUBAO_TTS_APP_ID || '',
   accessToken: import.meta.env.VITE_DOUBAO_TTS_ACCESS_TOKEN || '',
-  voiceType: import.meta.env.VITE_DOUBAO_TTS_VOICE_TYPE || 'zh_male_taocheng_uranus_bigtts',
+  voiceType: import.meta.env.VITE_DOUBAO_TTS_VOICE_TYPE || 'zh_female_wanqudashu_moon_bigtts',
+  resourceId: import.meta.env.VITE_DOUBAO_TTS_RESOURCE_ID || 'seed-tts-1.0',
 })
 
 type AudioChunk = {
@@ -29,6 +23,9 @@ export class StreamingTTS {
   private pendingRequests = 0
   private isFinished = false
   private abortController: AbortController | null = null
+  // 请求队列，避免并发导致豆包限流
+  private requestQueue: string[] = []
+  private isProcessingQueue = false
 
   constructor(options?: { onError?: (error: Error) => void; onEnd?: () => void }) {
     this.onError = options?.onError
@@ -36,20 +33,10 @@ export class StreamingTTS {
   }
 
   async start(): Promise<void> {
-    console.log('[DEBUG][StreamingTTS] start()')
     const config = getConfig()
-    console.log('[DEBUG][StreamingTTS] config:', {
-      appId: config.appId ? '已配置' : '未配置',
-      voiceType: config.voiceType,
-    })
 
     if (!config.appId || !config.accessToken) {
       throw new Error('豆包 TTS 未配置：请设置 VITE_DOUBAO_TTS_APP_ID 和 VITE_DOUBAO_TTS_ACCESS_TOKEN')
-    }
-
-    const proxyUrl = getTTSProxyUrl()
-    if (!proxyUrl) {
-      throw new Error('TTS 代理未配置：请设置 VITE_TTS_PROXY_URL')
     }
 
     this.isStopped = false
@@ -60,33 +47,46 @@ export class StreamingTTS {
   }
 
   async sendText(text: string): Promise<void> {
-    console.log('[DEBUG][StreamingTTS] sendText:', text.substring(0, 30) + '...')
     if (this.isStopped) return
 
-    const config = getConfig()
-    const proxyUrl = getTTSProxyUrl()
-
+    // 加入队列，串行处理避免并发限流
+    this.requestQueue.push(text)
     this.pendingRequests++
+    this.processQueue()
+  }
+
+  private async processQueue(): Promise<void> {
+    if (this.isProcessingQueue || this.requestQueue.length === 0) return
+    this.isProcessingQueue = true
+
+    while (this.requestQueue.length > 0 && !this.isStopped) {
+      const text = this.requestQueue.shift()!
+      await this.doSendText(text)
+    }
+
+    this.isProcessingQueue = false
+  }
+
+  private async doSendText(text: string): Promise<void> {
+    const config = getConfig()
 
     try {
-      const response = await fetch(`${proxyUrl}/tts/synthesize`, {
+      const response = await fetch('/api/tts', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         signal: this.abortController?.signal,
         body: JSON.stringify({
           text,
           appId: config.appId,
           accessToken: config.accessToken,
-          voice_type: config.voiceType,
+          resourceId: config.resourceId,
+          voiceType: config.voiceType,
           encoding: 'mp3',
-          speed_ratio: 1.0,
         }),
       })
 
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}))
+        const errorData = (await response.json().catch(() => ({}))) as { error?: string }
         throw new Error(`TTS请求失败: ${errorData.error || response.statusText}`)
       }
 
@@ -104,17 +104,11 @@ export class StreamingTTS {
           bytes[i] = binaryString.charCodeAt(i)
         }
 
-        this.audioQueue.push({
-          data: bytes,
-          isLast: true,
-        })
-
+        this.audioQueue.push({ data: bytes, isLast: true })
         this.tryPlayNext()
       }
     } catch (e) {
-      // 忽略 abort 错误
       if (e instanceof Error && e.name === 'AbortError') return
-      console.error('[DEBUG][StreamingTTS] sendText error:', e)
       this.onError?.(e as Error)
     } finally {
       this.pendingRequests--
@@ -123,26 +117,17 @@ export class StreamingTTS {
   }
 
   async finish(): Promise<void> {
-    console.log('[DEBUG][StreamingTTS] finish()')
     this.isFinished = true
     this.checkEnd()
   }
 
   private checkEnd(): void {
-    // 当所有请求完成、没有在播放、队列为空时，触发结束
     if (this.isFinished && this.pendingRequests === 0 && !this.isPlaying && this.audioQueue.length === 0) {
-      console.log('[DEBUG][StreamingTTS] 触发 onEnd')
       this.onEnd?.()
     }
   }
 
   private tryPlayNext(): void {
-    console.log(
-      '[DEBUG][StreamingTTS] tryPlayNext, isPlaying:',
-      this.isPlaying,
-      'queueLen:',
-      this.audioQueue.length
-    )
     if (this.isPlaying || this.audioQueue.length === 0 || this.isStopped) return
 
     const chunk = this.audioQueue.shift()!
@@ -190,6 +175,7 @@ export class StreamingTTS {
     this.isStopped = true
     this.isFinished = true
     this.audioQueue = []
+    this.requestQueue = []
 
     // 取消所有未完成的请求
     if (this.abortController) {
