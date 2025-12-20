@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import type { TarotCard } from '../data/tarot'
-import { getReading } from '../services/ai'
+import { getReadingStream } from '../services/ai'
 import { speak, stopSpeaking } from '../services/tts'
 
 interface Props {
@@ -10,7 +10,7 @@ interface Props {
 
 export function ReadingResult({ question, cards }: Props) {
   const [reading, setReading] = useState('')
-  const [isLoading, setIsLoading] = useState(true)
+  const [isStreaming, setIsStreaming] = useState(true)
   const [isSpeaking, setIsSpeaking] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -18,14 +18,16 @@ export function ReadingResult({ question, cards }: Props) {
     let cancelled = false
 
     async function fetchReading() {
-      setIsLoading(true)
+      setIsStreaming(true)
+      setReading('')
       setError(null)
 
       try {
-        const result = await getReading(question, cards)
-        if (!cancelled) {
-          setReading(result)
-        }
+        await getReadingStream(question, cards, (chunk) => {
+          if (!cancelled) {
+            setReading((prev) => prev + chunk)
+          }
+        })
       } catch (err) {
         if (!cancelled) {
           setError('获取解读时出现问题，请稍后重试')
@@ -33,7 +35,7 @@ export function ReadingResult({ question, cards }: Props) {
         }
       } finally {
         if (!cancelled) {
-          setIsLoading(false)
+          setIsStreaming(false)
         }
       }
     }
@@ -57,7 +59,7 @@ export function ReadingResult({ question, cards }: Props) {
     }
   }
 
-  if (isLoading) {
+  if (isStreaming && !reading) {
     return (
       <div className="bg-card border border-border rounded-2xl p-6 max-w-2xl mx-auto">
         <div className="flex items-center justify-center gap-3">
@@ -99,9 +101,11 @@ export function ReadingResult({ question, cards }: Props) {
         </h3>
         <button
           onClick={handleSpeak}
+          disabled={isStreaming}
           className="flex items-center gap-2 px-3 py-1.5 bg-secondary
                    hover:bg-primary hover:text-primary-foreground
-                   text-secondary-foreground rounded-xl transition-colors text-sm"
+                   text-secondary-foreground rounded-xl transition-colors text-sm
+                   disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-secondary"
         >
           {isSpeaking ? (
             <>
@@ -118,10 +122,13 @@ export function ReadingResult({ question, cards }: Props) {
       </div>
 
       <div className="prose max-w-none">
-        {reading.split('\n').map((paragraph, i) => (
+        {reading.split('\n').map((paragraph, i, arr) => (
           paragraph.trim() && (
             <p key={i} className="text-foreground leading-relaxed mb-3">
               {paragraph}
+              {isStreaming && i === arr.length - 1 && (
+                <span className="inline-block w-2 h-4 bg-primary/60 ml-0.5 animate-pulse" />
+              )}
             </p>
           )
         ))}
