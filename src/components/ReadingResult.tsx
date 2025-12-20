@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import type { TarotCard } from '../data/tarot'
 import { getReadingStream } from '../services/ai'
-import { StreamingTTS, SentenceBuffer } from '../services/tts-streaming'
+import { StreamingTTS } from '../services/tts-streaming'
 import { registerTTS, unregisterTTS, notifyListeners } from '../services/tts-control'
 
 interface Props {
@@ -9,7 +9,9 @@ interface Props {
   cards: TarotCard[]
   cachedReading?: string
   cachedReasoning?: string
-  onComplete?: (reading: string, reasoning: string) => void
+  cachedThinkingSeconds?: number
+  retryTrigger?: number
+  onComplete?: (reading: string, reasoning: string, thinkingSeconds: number) => void
 }
 
 export function ReadingResult({
@@ -17,6 +19,8 @@ export function ReadingResult({
   cards,
   cachedReading,
   cachedReasoning,
+  cachedThinkingSeconds,
+  retryTrigger,
   onComplete,
 }: Props) {
   const [reasoning, setReasoning] = useState(cachedReasoning || '')
@@ -26,45 +30,36 @@ export function ReadingResult({
   const [error, setError] = useState<string | null>(null)
   const [retryCount, setRetryCount] = useState(0)
   const [ignoreCache, setIgnoreCache] = useState(false)
+  const [thinkingSeconds, setThinkingSeconds] = useState(cachedThinkingSeconds || 0)
 
   const ttsRef = useRef<StreamingTTS | null>(null)
-  const sentenceBufferRef = useRef<SentenceBuffer | null>(null)
   const isSpeakingRef = useRef(false)
   const readingRef = useRef(reading)
-  const isStreamingRef = useRef(isStreaming)
+  const thinkingSecondsRef = useRef(thinkingSeconds)
 
   // 同步 ref
   useEffect(() => {
     readingRef.current = reading
   }, [reading])
-
   useEffect(() => {
-    isStreamingRef.current = isStreaming
-  }, [isStreaming])
+    thinkingSecondsRef.current = thinkingSeconds
+  }, [thinkingSeconds])
 
-  // 发送新完整句子到 TTS
-  const sendNewSentences = useCallback((text: string) => {
-    if (!ttsRef.current || !sentenceBufferRef.current) return
-
-    const newSentences = sentenceBufferRef.current.addText(text)
-    for (const sentence of newSentences) {
-      ttsRef.current.sendText(sentence)
+  // 思考计时器
+  useEffect(() => {
+    if (isStreaming && !reading) {
+      setThinkingSeconds(0)
+      const timer = setInterval(() => setThinkingSeconds(s => s + 1), 1000)
+      return () => clearInterval(timer)
     }
-  }, [])
+  }, [isStreaming, reading])
 
-  // 流结束时发送剩余内容
-  const flushRemaining = useCallback(() => {
-    if (!ttsRef.current || !sentenceBufferRef.current) return
-
-    const remaining = sentenceBufferRef.current.flush()
-    if (remaining) {
-      ttsRef.current.sendText(remaining)
-    }
-  }, [])
-
-  // 开始 TTS
-  const startTTS = useCallback(async () => {
+  // 开始 TTS（全文播报）
+  const startTTS = useCallback(async (text?: string) => {
     if (ttsRef.current) return
+
+    const content = text || readingRef.current
+    if (!content) return
 
     try {
       ttsRef.current = new StreamingTTS({
@@ -78,19 +73,16 @@ export function ReadingResult({
 
       await ttsRef.current.start()
       isSpeakingRef.current = true
-      sentenceBufferRef.current = new SentenceBuffer()
-      sendNewSentences(readingRef.current)
       notifyListeners()
 
-      if (!isStreamingRef.current) {
-        flushRemaining()
-        ttsRef.current.finish()
-      }
+      // 一次性发送全文
+      ttsRef.current.sendText(content)
+      ttsRef.current.finish()
     } catch (err) {
       console.error('[TTS] Start error:', err)
       ttsRef.current = null
     }
-  }, [sendNewSentences, flushRemaining])
+  }, [])
 
   // 停止 TTS
   const stopTTS = useCallback(() => {
@@ -114,7 +106,6 @@ export function ReadingResult({
   // 重试
   const handleRetry = useCallback(() => {
     stopTTS()
-    sentenceBufferRef.current?.clear()
     setReasoning('')
     setReasoningExpanded(false)
     setReading('')
@@ -123,13 +114,19 @@ export function ReadingResult({
     setRetryCount(c => c + 1)
   }, [stopTTS])
 
+  // 外部触发重试
+  useEffect(() => {
+    if (retryTrigger && retryTrigger > 0) {
+      handleRetry()
+    }
+  }, [retryTrigger, handleRetry])
+
   useEffect(() => {
     if (cachedReading && !ignoreCache) return
 
     let cancelled = false
     let fullReasoning = ''
     let fullReading = ''
-    let ttsStarted = false
 
     async function fetchReading() {
       setIsStreaming(true)
@@ -138,7 +135,7 @@ export function ReadingResult({
       setError(null)
 
       try {
-        await getReadingStream(question, cards, async (chunk, type) => {
+        await getReadingStream(question, cards, (chunk, type) => {
           if (cancelled) return
 
           if (type === 'reasoning') {
@@ -147,23 +144,13 @@ export function ReadingResult({
           } else {
             fullReading += chunk
             setReading(fullReading)
-
-            // 首次收到内容时自动开始 TTS（只朗读 content）
-            if (!ttsStarted && fullReading.length > 0) {
-              ttsStarted = true
-              await startTTS()
-            }
-
-            sendNewSentences(fullReading)
           }
         })
 
         if (!cancelled) {
-          onComplete?.(fullReading, fullReasoning)
-          if (ttsRef.current) {
-            flushRemaining()
-            ttsRef.current.finish()
-          }
+          onComplete?.(fullReading, fullReasoning, thinkingSecondsRef.current)
+          // 生成完成后自动播报全文
+          startTTS(fullReading)
         }
       } catch (err) {
         if (!cancelled) {
@@ -183,7 +170,7 @@ export function ReadingResult({
       cancelled = true
       stopTTS()
     }
-  }, [question, cards, cachedReading, ignoreCache, onComplete, sendNewSentences, flushRemaining, startTTS, stopTTS, retryCount])
+  }, [question, cards, cachedReading, ignoreCache, onComplete, startTTS, stopTTS, retryCount])
 
   // 注册到全局 TTS 控制
   useEffect(() => {
@@ -242,16 +229,8 @@ export function ReadingResult({
               {isStreaming && !reading && (
                 <span className="w-1.5 h-1.5 bg-primary rounded-full animate-pulse" />
               )}
-              <span>思考过程</span>
+              <span>思考过程{thinkingSeconds > 0 && <span className="tabular-nums">（{thinkingSeconds}s）</span>}</span>
               <span className="text-[10px]">{reasoningExpanded ? '▲' : '▼'}</span>
-            </button>
-          )}
-          {!isStreaming && reading && (
-            <button
-              onClick={handleRetry}
-              className="text-xs text-muted-foreground hover:text-foreground transition-colors"
-            >
-              重新解读
             </button>
           )}
         </div>
