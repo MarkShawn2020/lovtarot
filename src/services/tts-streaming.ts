@@ -28,6 +28,7 @@ export class StreamingTTS {
   private isStopped = false
   private pendingRequests = 0
   private isFinished = false
+  private abortController: AbortController | null = null
 
   constructor(options?: { onError?: (error: Error) => void; onEnd?: () => void }) {
     this.onError = options?.onError
@@ -55,6 +56,7 @@ export class StreamingTTS {
     this.isFinished = false
     this.pendingRequests = 0
     this.audioQueue = []
+    this.abortController = new AbortController()
   }
 
   async sendText(text: string): Promise<void> {
@@ -72,6 +74,7 @@ export class StreamingTTS {
         headers: {
           'Content-Type': 'application/json',
         },
+        signal: this.abortController?.signal,
         body: JSON.stringify({
           text,
           appId: config.appId,
@@ -109,6 +112,8 @@ export class StreamingTTS {
         this.tryPlayNext()
       }
     } catch (e) {
+      // 忽略 abort 错误
+      if (e instanceof Error && e.name === 'AbortError') return
       console.error('[DEBUG][StreamingTTS] sendText error:', e)
       this.onError?.(e as Error)
     } finally {
@@ -185,6 +190,12 @@ export class StreamingTTS {
     this.isStopped = true
     this.isFinished = true
     this.audioQueue = []
+
+    // 取消所有未完成的请求
+    if (this.abortController) {
+      this.abortController.abort()
+      this.abortController = null
+    }
 
     if (this.currentAudio) {
       this.currentAudio.pause()

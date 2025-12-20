@@ -160,6 +160,18 @@ export function ReadingResult({
     }
   }, [speakToggleRef, handleSpeak])
 
+  // 页面刷新/关闭前停止 TTS
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      if (ttsRef.current) {
+        ttsRef.current.stop()
+        ttsRef.current = null
+      }
+    }
+    window.addEventListener('beforeunload', handleBeforeUnload)
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload)
+  }, [])
+
   if (isStreaming && !reading) {
     return (
       <div className="h-full flex flex-col items-center justify-center bg-card/40 backdrop-blur-sm border border-border/30 rounded-xl p-4">
