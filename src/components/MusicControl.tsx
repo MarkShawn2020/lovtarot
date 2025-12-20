@@ -27,11 +27,13 @@ export function MusicControl() {
   }, [])
 
   return (
-    <div className="fixed left-4 bottom-4 z-50 flex items-center gap-2">
+    <div
+      className="fixed left-4 bottom-4 z-50 flex items-center gap-2"
+      onMouseEnter={() => setShowVolume(true)}
+      onMouseLeave={() => setShowVolume(false)}
+    >
       <button
         onClick={handleToggle}
-        onMouseEnter={() => setShowVolume(true)}
-        onMouseLeave={() => setShowVolume(false)}
         className="w-10 h-10 rounded-full bg-secondary/80 hover:bg-secondary border border-border
                    flex items-center justify-center transition-all shadow-sm hover:shadow"
         title={playing ? '暂停音乐' : '播放音乐'}
@@ -48,11 +50,7 @@ export function MusicControl() {
       </button>
 
       {showVolume && (
-        <div
-          className="bg-secondary/90 px-3 py-2 rounded-full border border-border shadow"
-          onMouseEnter={() => setShowVolume(true)}
-          onMouseLeave={() => setShowVolume(false)}
-        >
+        <div className="bg-secondary/90 px-3 py-2 rounded-full border border-border shadow">
           <input
             type="range"
             min="0"
