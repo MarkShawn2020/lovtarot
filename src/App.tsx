@@ -4,6 +4,7 @@ import { drawCards } from './data/tarot'
 import { CardDisplay } from './components/CardDisplay'
 import { QuestionInput } from './components/QuestionInput'
 import { ReadingResult } from './components/ReadingResult'
+import { TTSTest } from './components/TTSTest'
 import './index.css'
 
 type AppState = 'input' | 'drawing' | 'reading'
@@ -85,6 +86,9 @@ function App() {
       <footer className="mt-auto pt-8 text-center text-muted-foreground text-sm">
         <p>塔罗牌仅供娱乐和自我探索，不构成任何专业建议</p>
       </footer>
+
+      {/* TTS 测试组件 - 开发时使用 */}
+      <TTSTest />
     </div>
   )
 }
