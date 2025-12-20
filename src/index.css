@@ -56,6 +56,16 @@
 .delay-100 { animation-delay: 100ms; }
 .delay-200 { animation-delay: 200ms; }
 
+@keyframes shuffle-left {
+  0%, 100% { transform: translate(-50%, -50%) translateX(-10px) rotate(-5deg); }
+  50% { transform: translate(-50%, -50%) translateX(10px) rotate(5deg); }
+}
+
+@keyframes shuffle-right {
+  0%, 100% { transform: translate(-50%, -50%) translateX(10px) rotate(5deg); }
+  50% { transform: translate(-50%, -50%) translateX(-10px) rotate(-5deg); }
+}
+
 body {
   margin: 0;
   background-color: var(--color-background);
