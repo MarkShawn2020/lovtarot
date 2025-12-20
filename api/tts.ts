@@ -50,10 +50,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const voiceType = (body.voiceType || process.env.VITE_DOUBAO_TTS_VOICE_TYPE || 'zh_female_wanqudashu_moon_bigtts').trim()
 
     // 根据音色自动选择 resourceId
-    // 豆包语音合成模型1.0: seed-tts-1.0
-    // 豆包语音合成模型2.0: seed-tts-2.0
-    // 声音复刻: seed-icl-1.0 / seed-icl-2.0
-    const resourceId = process.env.VITE_DOUBAO_TTS_RESOURCE_ID || (voiceType.startsWith('S_') ? 'seed-icl-1.0' : 'seed-tts-1.0')
+    // TTS 1.0: seed-tts-1.0 (如 BV001_streaming)
+    // TTS 2.0: seed-tts-2.0 (如 *_bigtts)
+    // 声音复刻: seed-icl-1.0 (S_ 开头)
+    let resourceId = process.env.VITE_DOUBAO_TTS_RESOURCE_ID
+    if (!resourceId) {
+      if (voiceType.startsWith('S_')) {
+        resourceId = 'seed-icl-1.0'
+      } else if (voiceType.includes('bigtts')) {
+        resourceId = 'seed-tts-2.0'
+      } else {
+        resourceId = 'seed-tts-1.0'
+      }
+    }
 
     // V3 API 请求体格式
     const ttsBody = {
