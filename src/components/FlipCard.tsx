@@ -24,18 +24,18 @@ export function FlipCard({ card, position, delay, onFlipComplete }: Props) {
   }, [delay, onFlipComplete])
 
   return (
-    <div className="flex flex-col items-center md:h-full md:min-h-0">
+    <div className="flex flex-col items-center">
       {/* 位置标签 */}
       <span
-        className="text-primary text-xs md:text-sm font-serif opacity-0 mb-1 md:mb-3 shrink-0"
+        className="text-primary text-xs font-serif opacity-0 mb-1 shrink-0"
         style={{ animation: `fade-in 0.5s ease-out ${delay + 400}ms forwards` }}
       >
         {position}
       </span>
 
-      {/* 卡片容器 - 窄屏宽度驱动，宽屏高度驱动 */}
+      {/* 卡片容器 - 宽度驱动 */}
       <div
-        className="relative cursor-pointer group w-full md:w-auto md:h-[calc(100%-80px)] aspect-[2/3]"
+        className="relative cursor-pointer group w-full aspect-[2/3]"
         style={{ perspective: '1000px' }}
         onMouseEnter={() => isFlipped && setShowHover(true)}
         onMouseLeave={() => setShowHover(false)}
@@ -96,21 +96,13 @@ export function FlipCard({ card, position, delay, onFlipComplete }: Props) {
 
       {/* 卡片名称 */}
       <h3
-        className="mt-1 md:mt-2 text-foreground text-xs md:text-sm font-medium font-serif opacity-0 text-center shrink-0"
+        className="mt-1 text-foreground text-xs font-medium font-serif opacity-0 text-center shrink-0"
         style={{
           animation: isFlipped ? 'fade-in 0.6s ease-out 200ms forwards' : 'none',
         }}
       >
         {card.name}
       </h3>
-      <p
-        className="text-muted-foreground/60 text-[10px] md:text-xs opacity-0 text-center shrink-0 hidden md:block"
-        style={{
-          animation: isFlipped ? 'fade-in 0.6s ease-out 400ms forwards' : 'none',
-        }}
-      >
-        {card.keywords.slice(0, 2).join(' · ')}
-      </p>
     </div>
   )
 }
