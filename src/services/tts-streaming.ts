@@ -1,20 +1,12 @@
-// TTS 2.0 双向流式语音合成服务
+// TTS HTTP 流式语音合成服务
 // 支持边生成文本边播放语音
 
-import {
-  EventType,
-  MsgType,
-  unmarshalMessage,
-  createStartConnectionMessage,
-  createFinishConnectionMessage,
-  createStartSessionMessage,
-  createFinishSessionMessage,
-  createTaskRequestMessage,
-  getEventName,
-  type Message,
-} from './tts-protocol'
-
-const DOUBAO_TTS_WS_URL = 'wss://openspeech.bytedance.com/api/v3/tts/bidirection'
+// TTS 代理地址（支持 https 或 wss 前缀，自动转换）
+const getTTSProxyUrl = () => {
+  const url = import.meta.env.VITE_TTS_PROXY_URL || ''
+  // 移除 wss:// 或 ws:// 前缀，转换为 https://
+  return url.replace(/^wss?:\/\//, 'https://')
+}
 
 const getConfig = () => ({
   appId: import.meta.env.VITE_DOUBAO_TTS_APP_ID || '',
@@ -22,38 +14,20 @@ const getConfig = () => ({
   voiceType: import.meta.env.VITE_DOUBAO_TTS_VOICE_TYPE || 'zh_male_taocheng_uranus_bigtts',
 })
 
-function generateUUID(): string {
-  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
-    const r = (Math.random() * 16) | 0
-    const v = c === 'x' ? r : (r & 0x3) | 0x8
-    return v.toString(16)
-  })
-}
-
-function voiceTypeToCluster(voiceType: string): string {
-  if (voiceType.startsWith('S_')) {
-    return 'volcano_icl'
-  }
-  return 'volcano_tts'
-}
-
 type AudioChunk = {
   data: Uint8Array
   isLast: boolean
 }
 
 export class StreamingTTS {
-  private ws: WebSocket | null = null
-  private sessionId: string = ''
   private audioQueue: AudioChunk[] = []
   private isPlaying = false
   private currentAudio: HTMLAudioElement | null = null
   private onError?: (error: Error) => void
   private onEnd?: () => void
-  private pendingTexts: string[] = []
-  private isSessionReady = false
   private isStopped = false
-  private reqSeq = 0
+  private pendingRequests = 0
+  private isFinished = false
 
   constructor(options?: { onError?: (error: Error) => void; onEnd?: () => void }) {
     this.onError = options?.onError
@@ -61,228 +35,120 @@ export class StreamingTTS {
   }
 
   async start(): Promise<void> {
-    console.log('[DEBUG][StreamingTTS] start() 入口')
+    console.log('[DEBUG][StreamingTTS] start()')
     const config = getConfig()
-    console.log('[DEBUG][StreamingTTS] config:', { appId: config.appId ? '已配置' : '未配置', voiceType: config.voiceType })
+    console.log('[DEBUG][StreamingTTS] config:', {
+      appId: config.appId ? '已配置' : '未配置',
+      voiceType: config.voiceType,
+    })
 
     if (!config.appId || !config.accessToken) {
       throw new Error('豆包 TTS 未配置：请设置 VITE_DOUBAO_TTS_APP_ID 和 VITE_DOUBAO_TTS_ACCESS_TOKEN')
     }
 
+    const proxyUrl = getTTSProxyUrl()
+    if (!proxyUrl) {
+      throw new Error('TTS 代理未配置：请设置 VITE_TTS_PROXY_URL')
+    }
+
     this.isStopped = false
-    this.sessionId = generateUUID()
-    this.reqSeq = 0
-
-    return new Promise((resolve, reject) => {
-      const wsUrl = `${DOUBAO_TTS_WS_URL}?authorization=Bearer;${encodeURIComponent(config.accessToken)}`
-      console.log('[DEBUG][StreamingTTS] 连接 WebSocket:', wsUrl.split('?')[0])
-      this.ws = new WebSocket(wsUrl)
-      this.ws.binaryType = 'arraybuffer'
-
-      this.ws.onopen = async () => {
-        console.log('[DEBUG][StreamingTTS] WebSocket onopen')
-        try {
-          // Step 1: StartConnection
-          this.ws!.send(createStartConnectionMessage())
-        } catch (e) {
-          reject(e)
-        }
-      }
-
-      this.ws.onmessage = (event) => {
-        if (this.isStopped) {
-          console.log('[DEBUG][StreamingTTS] onmessage 但 isStopped=true，忽略')
-          return
-        }
-
-        try {
-          const data = new Uint8Array(event.data as ArrayBuffer)
-          const msg = unmarshalMessage(data)
-          this.handleMessage(msg, resolve, reject)
-        } catch (e) {
-          console.error('[DEBUG][StreamingTTS] message parse error:', e)
-          this.onError?.(e as Error)
-        }
-      }
-
-      this.ws.onerror = (e) => {
-        console.error('[DEBUG][StreamingTTS] WebSocket error:', e)
-        reject(new Error('WebSocket 连接失败'))
-      }
-
-      this.ws.onclose = (e) => {
-        console.log('[DEBUG][StreamingTTS] WebSocket onclose, code:', e.code, 'reason:', e.reason, 'isStopped:', this.isStopped)
-        if (!this.isStopped) {
-          this.playRemainingAudio()
-        }
-      }
-    })
+    this.isFinished = false
+    this.pendingRequests = 0
+    this.audioQueue = []
   }
 
-  private handleMessage(msg: Message, resolve?: () => void, reject?: (e: Error) => void): void {
-    const config = getConfig()
-    console.log('[DEBUG][StreamingTTS] handleMessage, type:', getMsgTypeName(msg.type), 'event:', msg.event !== undefined ? getEventName(msg.event) : 'none')
-
-    if (msg.type === MsgType.Error) {
-      const errorText = new TextDecoder().decode(msg.payload)
-      const error = new Error(`TTS Error (${msg.errorCode}): ${errorText}`)
-      console.error('[DEBUG][StreamingTTS] Error:', error)
-      this.onError?.(error)
-      reject?.(error)
-      return
-    }
-
-    // 处理事件消息
-    if (msg.event !== undefined) {
-      console.log('[DEBUG][StreamingTTS] 处理事件:', getEventName(msg.event))
-
-      switch (msg.event) {
-        case EventType.ConnectionStarted:
-          // Step 2: StartSession
-          const sessionConfig = {
-            app: {
-              appid: config.appId,
-              token: config.accessToken,
-              cluster: voiceTypeToCluster(config.voiceType),
-            },
-            user: {
-              uid: 'web_user_' + generateUUID(),
-            },
-            audio: {
-              voice_type: config.voiceType,
-              encoding: 'mp3',
-              speed_ratio: 1.0,
-            },
-          }
-          this.ws!.send(createStartSessionMessage(this.sessionId, sessionConfig))
-          break
-
-        case EventType.SessionStarted:
-          console.log('[DEBUG][StreamingTTS] SessionStarted, resolve promise')
-          this.isSessionReady = true
-          resolve?.()
-          // 发送待处理的文本
-          this.flushPendingTexts()
-          break
-
-        case EventType.SessionFinished:
-        case EventType.TTSEnded:
-          // 会话结束，播放剩余音频
-          console.log('[DEBUG][StreamingTTS] 会话结束事件，调用 playRemainingAudio')
-          this.playRemainingAudio()
-          break
-
-        case EventType.SessionFailed:
-          const errorPayload = new TextDecoder().decode(msg.payload)
-          console.error('Session failed:', errorPayload)
-          this.onError?.(new Error(`Session failed: ${errorPayload}`))
-          break
-
-        case EventType.TTSResponse:
-          // 收到音频数据
-          if (msg.payload.length > 0) {
-            this.audioQueue.push({
-              data: msg.payload,
-              isLast: false,
-            })
-            this.tryPlayNext()
-          }
-          break
-
-        case EventType.TTSSentenceEnd:
-          // 一句话合成完毕，标记为可播放
-          if (this.audioQueue.length > 0) {
-            this.audioQueue[this.audioQueue.length - 1].isLast = true
-          }
-          this.tryPlayNext()
-          break
-      }
-    }
-
-    // 处理纯音频消息（无事件）
-    if (msg.type === MsgType.AudioOnlyServer && msg.payload.length > 0) {
-      this.audioQueue.push({
-        data: msg.payload,
-        isLast: msg.sequence !== undefined && msg.sequence < 0,
-      })
-      this.tryPlayNext()
-    }
-  }
-
-  private flushPendingTexts(): void {
-    for (const text of this.pendingTexts) {
-      this.doSendText(text)
-    }
-    this.pendingTexts = []
-  }
-
-  private doSendText(text: string): void {
-    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
-      console.log('[DEBUG][StreamingTTS] doSendText 跳过，ws不可用')
-      return
-    }
-
-    console.log('[DEBUG][StreamingTTS] doSendText:', text.substring(0, 30) + '...')
-    const payload = {
-      text: text,
-      reqid: generateUUID(),
-      sequence: ++this.reqSeq,
-    }
-    this.ws.send(createTaskRequestMessage(this.sessionId, payload))
-  }
-
-  sendText(text: string): void {
-    console.log('[DEBUG][StreamingTTS] sendText, isStopped:', this.isStopped, 'isSessionReady:', this.isSessionReady)
+  async sendText(text: string): Promise<void> {
+    console.log('[DEBUG][StreamingTTS] sendText:', text.substring(0, 30) + '...')
     if (this.isStopped) return
 
-    // 如果会话还没准备好，先缓存
-    if (!this.isSessionReady) {
-      this.pendingTexts.push(text)
-      return
-    }
+    const config = getConfig()
+    const proxyUrl = getTTSProxyUrl()
 
-    this.doSendText(text)
+    this.pendingRequests++
+
+    try {
+      const response = await fetch(`${proxyUrl}/tts/synthesize`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          text,
+          appId: config.appId,
+          accessToken: config.accessToken,
+          voice_type: config.voiceType,
+          encoding: 'mp3',
+          speed_ratio: 1.0,
+        }),
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}))
+        throw new Error(`TTS请求失败: ${errorData.error || response.statusText}`)
+      }
+
+      const result = (await response.json()) as { audio?: string; error?: string }
+
+      if (result.error) {
+        throw new Error(`TTS错误: ${result.error}`)
+      }
+
+      if (result.audio) {
+        // base64 解码
+        const binaryString = atob(result.audio)
+        const bytes = new Uint8Array(binaryString.length)
+        for (let i = 0; i < binaryString.length; i++) {
+          bytes[i] = binaryString.charCodeAt(i)
+        }
+
+        this.audioQueue.push({
+          data: bytes,
+          isLast: true,
+        })
+
+        this.tryPlayNext()
+      }
+    } catch (e) {
+      console.error('[DEBUG][StreamingTTS] sendText error:', e)
+      this.onError?.(e as Error)
+    } finally {
+      this.pendingRequests--
+      this.checkEnd()
+    }
   }
 
   async finish(): Promise<void> {
-    console.log('[DEBUG][StreamingTTS] finish() called, ws状态:', this.ws?.readyState)
-    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return
+    console.log('[DEBUG][StreamingTTS] finish()')
+    this.isFinished = true
+    this.checkEnd()
+  }
 
-    // 发送 FinishSession
-    this.ws.send(createFinishSessionMessage(this.sessionId))
+  private checkEnd(): void {
+    // 当所有请求完成、没有在播放、队列为空时，触发结束
+    if (this.isFinished && this.pendingRequests === 0 && !this.isPlaying && this.audioQueue.length === 0) {
+      console.log('[DEBUG][StreamingTTS] 触发 onEnd')
+      this.onEnd?.()
+    }
   }
 
   private tryPlayNext(): void {
-    console.log('[DEBUG][StreamingTTS] tryPlayNext, isPlaying:', this.isPlaying, 'queueLen:', this.audioQueue.length, 'isStopped:', this.isStopped)
+    console.log(
+      '[DEBUG][StreamingTTS] tryPlayNext, isPlaying:',
+      this.isPlaying,
+      'queueLen:',
+      this.audioQueue.length
+    )
     if (this.isPlaying || this.audioQueue.length === 0 || this.isStopped) return
 
-    // 收集连续的音频块直到遇到 isLast
-    const chunks: Uint8Array[] = []
-    while (this.audioQueue.length > 0) {
-      const chunk = this.audioQueue.shift()!
-      chunks.push(chunk.data)
-      if (chunk.isLast) break
-    }
-
-    if (chunks.length === 0) return
-
-    // 合并音频并播放
-    const totalLength = chunks.reduce((sum, c) => sum + c.length, 0)
-    const audioBuffer = new Uint8Array(totalLength)
-    let offset = 0
-    for (const chunk of chunks) {
-      audioBuffer.set(chunk, offset)
-      offset += chunk.length
-    }
-
-    this.playAudio(audioBuffer)
+    const chunk = this.audioQueue.shift()!
+    this.playAudio(chunk.data)
   }
 
   private playAudio(audioData: Uint8Array): void {
     if (this.isStopped) return
 
     this.isPlaying = true
-    const blob = new Blob([new Uint8Array(audioData)], { type: 'audio/mpeg' })
+    const blob = new Blob([audioData.buffer as ArrayBuffer], { type: 'audio/mpeg' })
     const url = URL.createObjectURL(blob)
     this.currentAudio = new Audio(url)
 
@@ -296,9 +162,8 @@ export class StreamingTTS {
       // 继续播放队列中的音频
       if (this.audioQueue.length > 0) {
         this.tryPlayNext()
-      } else if (this.ws?.readyState !== WebSocket.OPEN) {
-        // WebSocket 已关闭且队列为空，播放结束
-        this.onEnd?.()
+      } else {
+        this.checkEnd()
       }
     }
 
@@ -316,41 +181,15 @@ export class StreamingTTS {
     })
   }
 
-  private playRemainingAudio(): void {
-    console.log('[DEBUG][StreamingTTS] playRemainingAudio, queueLen:', this.audioQueue.length, 'isPlaying:', this.isPlaying)
-    // 播放队列中剩余的所有音频
-    if (this.audioQueue.length > 0 && !this.isPlaying) {
-      // 标记最后一个为 isLast
-      if (this.audioQueue.length > 0) {
-        this.audioQueue[this.audioQueue.length - 1].isLast = true
-      }
-      this.tryPlayNext()
-    } else if (!this.isPlaying) {
-      console.log('[DEBUG][StreamingTTS] playRemainingAudio 触发 onEnd')
-      this.onEnd?.()
-    }
-  }
-
   stop(): void {
     this.isStopped = true
-    this.isSessionReady = false
-    this.pendingTexts = []
+    this.isFinished = true
     this.audioQueue = []
 
     if (this.currentAudio) {
       this.currentAudio.pause()
       this.currentAudio.src = ''
       this.currentAudio = null
-    }
-
-    if (this.ws) {
-      try {
-        this.ws.send(createFinishConnectionMessage())
-      } catch {
-        // ignore
-      }
-      this.ws.close()
-      this.ws = null
     }
 
     this.isPlaying = false

@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { QuestionInput } from '../components/QuestionInput'
 import { ShufflingAnimation } from '../components/ShufflingAnimation'
+import { FAB, type MenuItem } from '../components/FAB'
 import { drawCards } from '../data/tarot'
 import { createSession } from '../services/session'
 
@@ -20,9 +21,22 @@ export function HomePage() {
     }, 2500)
   }
 
+  const menuItems: MenuItem[] = [
+    {
+      icon: '📜',
+      label: '历史记录',
+      onClick: () => navigate('/history'),
+    },
+  ]
+
   if (isDrawing) {
     return <ShufflingAnimation />
   }
 
-  return <QuestionInput onSubmit={handleSubmit} />
+  return (
+    <>
+      <QuestionInput onSubmit={handleSubmit} />
+      <FAB items={menuItems} />
+    </>
+  )
 }

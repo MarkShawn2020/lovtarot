@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "doubao_tts_mcp": {
+      "command": "uv",
+      "args": ["--directory", "/Users/mark/projects/taluo/doubao-tts-mcp", "run", "doubao-tts-mcp"],
+      "env": {
+        "VOLC_APPID": "1084604614",
+        "VOLC_TOKEN": "GUbl5zJfzuqO0Pdv15pt2iCLD3gE6ArL",
+        "OUTPUT_DIR": "/Users/mark/projects/taluo/output"
+      }
+    }
+  }
+}
