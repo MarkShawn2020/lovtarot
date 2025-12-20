@@ -6,16 +6,21 @@ import { speak, stopSpeaking } from '../services/tts'
 interface Props {
   question: string
   cards: TarotCard[]
+  cachedReading?: string
+  onComplete?: (reading: string) => void
 }
 
-export function ReadingResult({ question, cards }: Props) {
-  const [reading, setReading] = useState('')
-  const [isStreaming, setIsStreaming] = useState(true)
+export function ReadingResult({ question, cards, cachedReading, onComplete }: Props) {
+  const [reading, setReading] = useState(cachedReading || '')
+  const [isStreaming, setIsStreaming] = useState(!cachedReading)
   const [isSpeaking, setIsSpeaking] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
+    if (cachedReading) return
+
     let cancelled = false
+    let fullReading = ''
 
     async function fetchReading() {
       setIsStreaming(true)
@@ -25,9 +30,13 @@ export function ReadingResult({ question, cards }: Props) {
       try {
         await getReadingStream(question, cards, (chunk) => {
           if (!cancelled) {
-            setReading((prev) => prev + chunk)
+            fullReading += chunk
+            setReading(fullReading)
           }
         })
+        if (!cancelled) {
+          onComplete?.(fullReading)
+        }
       } catch (err) {
         if (!cancelled) {
           setError('获取解读时出现问题，请稍后重试')
@@ -46,7 +55,7 @@ export function ReadingResult({ question, cards }: Props) {
       cancelled = true
       stopSpeaking()
     }
-  }, [question, cards])
+  }, [question, cards, cachedReading, onComplete])
 
   const handleSpeak = async () => {
     if (isSpeaking) {
