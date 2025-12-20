@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { getSession, updateReading } from '../services/session'
 import { CardDisplay } from '../components/CardDisplay'
@@ -9,23 +9,10 @@ export function ReadingPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const session = id ? getSession(id) : null
-  const [showReading, setShowReading] = useState(true)
 
   // 语音控制
   const [isSpeaking, setIsSpeaking] = useState(false)
   const speakToggleRef = useRef<(() => void) | null>(null)
-
-  // 快捷键
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === ' ' || e.key === 'r' || e.key === 'R') {
-        e.preventDefault()
-        setShowReading(prev => !prev)
-      }
-    }
-    window.addEventListener('keydown', handleKeyDown)
-    return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [])
 
   if (!session) {
     return (
@@ -49,12 +36,6 @@ export function ReadingPage() {
 
   const menuItems: MenuItem[] = [
     {
-      icon: showReading ? '👁️' : '👁️‍🗨️',
-      label: showReading ? '隐藏解读' : '显示解读',
-      shortcut: 'R',
-      onClick: () => setShowReading(prev => !prev),
-    },
-    {
       icon: isSpeaking ? '⏹' : '🔊',
       label: isSpeaking ? '停止语音' : '语音播放',
       onClick: () => speakToggleRef.current?.(),
@@ -73,31 +54,21 @@ export function ReadingPage() {
   ]
 
   return (
-    <div className="w-full min-h-full md:h-full md:overflow-hidden md:flex md:flex-col">
-      {/* 标题 */}
-      <h1 className="text-center text-3xl md:text-5xl font-bold text-primary font-serif
-                     leading-tight drop-shadow-sm my-10 md:my-0 md:mb-6 md:shrink-0">
+    <div className="w-full min-h-full">
+      <h1 className="text-center text-3xl font-bold text-primary font-serif leading-tight drop-shadow-sm my-10">
         {session.question}
       </h1>
 
-      {/* 主体：窄屏纵向流式，宽屏横向flex */}
-      <div className="md:flex-1 md:min-h-0 md:flex md:flex-row md:gap-6">
-        <div className={`w-full mb-4 md:mb-0 transition-all duration-300
-                        ${showReading ? 'md:max-w-[55%]' : 'md:max-w-none'}`}>
-          <CardDisplay cards={session.cards} />
-        </div>
-
-        <div className={`w-full transition-all duration-300 overflow-hidden
-                        ${showReading ? 'md:flex-1 md:min-w-[300px] opacity-100' : 'h-0 md:w-0 opacity-0'}`}>
-          <ReadingResult
-            question={session.question}
-            cards={session.cards}
-            cachedReading={session.reading}
-            onComplete={handleReadingComplete}
-            onSpeakingChange={setIsSpeaking}
-            speakToggleRef={speakToggleRef}
-          />
-        </div>
+      <div className="flex flex-col gap-6">
+        <CardDisplay cards={session.cards} />
+        <ReadingResult
+          question={session.question}
+          cards={session.cards}
+          cachedReading={session.reading}
+          onComplete={handleReadingComplete}
+          onSpeakingChange={setIsSpeaking}
+          speakToggleRef={speakToggleRef}
+        />
       </div>
 
       <FAB items={menuItems} />
