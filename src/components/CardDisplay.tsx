@@ -9,7 +9,7 @@ const positions = ['过去', '现在', '未来']
 
 export function CardDisplay({ cards }: Props) {
   return (
-    <div className="flex justify-center gap-4 md:gap-8 mb-8">
+    <div className="h-full flex justify-center gap-6">
       {cards.map((card, index) => (
         <FlipCard
           key={card.id}

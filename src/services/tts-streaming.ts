@@ -61,7 +61,9 @@ export class StreamingTTS {
   }
 
   async start(): Promise<void> {
+    console.log('[DEBUG][StreamingTTS] start() 入口')
     const config = getConfig()
+    console.log('[DEBUG][StreamingTTS] config:', { appId: config.appId ? '已配置' : '未配置', voiceType: config.voiceType })
 
     if (!config.appId || !config.accessToken) {
       throw new Error('豆包 TTS 未配置：请设置 VITE_DOUBAO_TTS_APP_ID 和 VITE_DOUBAO_TTS_ACCESS_TOKEN')
@@ -73,10 +75,12 @@ export class StreamingTTS {
 
     return new Promise((resolve, reject) => {
       const wsUrl = `${DOUBAO_TTS_WS_URL}?authorization=Bearer;${encodeURIComponent(config.accessToken)}`
+      console.log('[DEBUG][StreamingTTS] 连接 WebSocket:', wsUrl.split('?')[0])
       this.ws = new WebSocket(wsUrl)
       this.ws.binaryType = 'arraybuffer'
 
       this.ws.onopen = async () => {
+        console.log('[DEBUG][StreamingTTS] WebSocket onopen')
         try {
           // Step 1: StartConnection
           this.ws!.send(createStartConnectionMessage())
@@ -86,24 +90,28 @@ export class StreamingTTS {
       }
 
       this.ws.onmessage = (event) => {
-        if (this.isStopped) return
+        if (this.isStopped) {
+          console.log('[DEBUG][StreamingTTS] onmessage 但 isStopped=true，忽略')
+          return
+        }
 
         try {
           const data = new Uint8Array(event.data as ArrayBuffer)
           const msg = unmarshalMessage(data)
           this.handleMessage(msg, resolve, reject)
         } catch (e) {
-          console.error('TTS message parse error:', e)
+          console.error('[DEBUG][StreamingTTS] message parse error:', e)
           this.onError?.(e as Error)
         }
       }
 
       this.ws.onerror = (e) => {
-        console.error('TTS WebSocket error:', e)
+        console.error('[DEBUG][StreamingTTS] WebSocket error:', e)
         reject(new Error('WebSocket 连接失败'))
       }
 
-      this.ws.onclose = () => {
+      this.ws.onclose = (e) => {
+        console.log('[DEBUG][StreamingTTS] WebSocket onclose, code:', e.code, 'reason:', e.reason, 'isStopped:', this.isStopped)
         if (!this.isStopped) {
           this.playRemainingAudio()
         }
@@ -113,11 +121,12 @@ export class StreamingTTS {
 
   private handleMessage(msg: Message, resolve?: () => void, reject?: (e: Error) => void): void {
     const config = getConfig()
+    console.log('[DEBUG][StreamingTTS] handleMessage, type:', getMsgTypeName(msg.type), 'event:', msg.event !== undefined ? getEventName(msg.event) : 'none')
 
     if (msg.type === MsgType.Error) {
       const errorText = new TextDecoder().decode(msg.payload)
       const error = new Error(`TTS Error (${msg.errorCode}): ${errorText}`)
-      console.error(error)
+      console.error('[DEBUG][StreamingTTS] Error:', error)
       this.onError?.(error)
       reject?.(error)
       return
@@ -125,7 +134,7 @@ export class StreamingTTS {
 
     // 处理事件消息
     if (msg.event !== undefined) {
-      console.debug(`TTS Event: ${getEventName(msg.event)}`)
+      console.log('[DEBUG][StreamingTTS] 处理事件:', getEventName(msg.event))
 
       switch (msg.event) {
         case EventType.ConnectionStarted:
@@ -149,6 +158,7 @@ export class StreamingTTS {
           break
 
         case EventType.SessionStarted:
+          console.log('[DEBUG][StreamingTTS] SessionStarted, resolve promise')
           this.isSessionReady = true
           resolve?.()
           // 发送待处理的文本
@@ -158,6 +168,7 @@ export class StreamingTTS {
         case EventType.SessionFinished:
         case EventType.TTSEnded:
           // 会话结束，播放剩余音频
+          console.log('[DEBUG][StreamingTTS] 会话结束事件，调用 playRemainingAudio')
           this.playRemainingAudio()
           break
 
@@ -206,8 +217,12 @@ export class StreamingTTS {
   }
 
   private doSendText(text: string): void {
-    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+      console.log('[DEBUG][StreamingTTS] doSendText 跳过，ws不可用')
+      return
+    }
 
+    console.log('[DEBUG][StreamingTTS] doSendText:', text.substring(0, 30) + '...')
     const payload = {
       text: text,
       reqid: generateUUID(),
@@ -217,6 +232,7 @@ export class StreamingTTS {
   }
 
   sendText(text: string): void {
+    console.log('[DEBUG][StreamingTTS] sendText, isStopped:', this.isStopped, 'isSessionReady:', this.isSessionReady)
     if (this.isStopped) return
 
     // 如果会话还没准备好，先缓存
@@ -229,6 +245,7 @@ export class StreamingTTS {
   }
 
   async finish(): Promise<void> {
+    console.log('[DEBUG][StreamingTTS] finish() called, ws状态:', this.ws?.readyState)
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return
 
     // 发送 FinishSession
@@ -236,6 +253,7 @@ export class StreamingTTS {
   }
 
   private tryPlayNext(): void {
+    console.log('[DEBUG][StreamingTTS] tryPlayNext, isPlaying:', this.isPlaying, 'queueLen:', this.audioQueue.length, 'isStopped:', this.isStopped)
     if (this.isPlaying || this.audioQueue.length === 0 || this.isStopped) return
 
     // 收集连续的音频块直到遇到 isLast
@@ -299,6 +317,7 @@ export class StreamingTTS {
   }
 
   private playRemainingAudio(): void {
+    console.log('[DEBUG][StreamingTTS] playRemainingAudio, queueLen:', this.audioQueue.length, 'isPlaying:', this.isPlaying)
     // 播放队列中剩余的所有音频
     if (this.audioQueue.length > 0 && !this.isPlaying) {
       // 标记最后一个为 isLast
@@ -307,6 +326,7 @@ export class StreamingTTS {
       }
       this.tryPlayNext()
     } else if (!this.isPlaying) {
+      console.log('[DEBUG][StreamingTTS] playRemainingAudio 触发 onEnd')
       this.onEnd?.()
     }
   }
