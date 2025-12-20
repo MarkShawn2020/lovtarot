@@ -1,14 +1,30 @@
 import { useState, useEffect, useCallback } from 'react'
-import { playBGM, pauseBGM, isBGMPlaying, setVolume, getVolume, initBGM } from '../services/bgm'
+import { playBGM, pauseBGM, isBGMPlaying, setVolume, getVolume, initBGM, tryAutoPlay } from '../services/bgm'
 
 export function MusicControl() {
   const [playing, setPlaying] = useState(false)
-  const [vol, setVol] = useState(0.3)
+  const [vol, setVol] = useState(0.15)
   const [showVolume, setShowVolume] = useState(false)
 
   useEffect(() => {
     initBGM()
+    setPlaying(isBGMPlaying())
     setVol(getVolume())
+
+    // 首次用户交互后尝试自动播放
+    const handleInteraction = () => {
+      tryAutoPlay().then(() => setPlaying(isBGMPlaying()))
+      document.removeEventListener('click', handleInteraction)
+      document.removeEventListener('keydown', handleInteraction)
+    }
+
+    document.addEventListener('click', handleInteraction, { once: true })
+    document.addEventListener('keydown', handleInteraction, { once: true })
+
+    return () => {
+      document.removeEventListener('click', handleInteraction)
+      document.removeEventListener('keydown', handleInteraction)
+    }
   }, [])
 
   const handleToggle = useCallback(() => {
