@@ -1,4 +1,4 @@
-import { useRef, useCallback } from 'react'
+import { useState, useRef, useCallback } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { domToJpeg } from 'modern-screenshot'
 import { getSession, updateReading } from '../services/session'
@@ -10,6 +10,7 @@ export function ReadingPage() {
   const session = id ? getSession(id) : null
 
   const contentRef = useRef<HTMLDivElement>(null)
+  const [retryTrigger, setRetryTrigger] = useState(0)
 
   const takeScreenshot = useCallback(async () => {
     if (!contentRef.current) return
@@ -39,8 +40,8 @@ export function ReadingPage() {
     )
   }
 
-  const handleReadingComplete = (reading: string, reasoning: string) => {
-    updateReading(session.id, reading, reasoning)
+  const handleReadingComplete = (reading: string, reasoning: string, thinkingSeconds: number) => {
+    updateReading(session.id, reading, reasoning, thinkingSeconds)
   }
 
   return (
@@ -76,18 +77,26 @@ export function ReadingPage() {
             cards={session.cards}
             cachedReading={session.reading}
             cachedReasoning={session.reasoning}
+            cachedThinkingSeconds={session.thinkingSeconds}
+            retryTrigger={retryTrigger}
             onComplete={handleReadingComplete}
           />
         </div>
       </div>
 
       {/* 底部工具栏 */}
-      <div className="mt-8 flex items-center justify-center text-sm">
+      <div className="mt-8 flex items-center justify-center gap-3 text-sm">
+        <button
+          onClick={() => setRetryTrigger(n => n + 1)}
+          className="px-4 py-2 text-muted-foreground hover:text-primary border border-border hover:border-primary/50 rounded-xl transition-colors"
+        >
+          重新解读
+        </button>
         <button
           onClick={takeScreenshot}
-          className="px-3 py-1.5 text-muted-foreground hover:text-foreground hover:bg-card/60 rounded-lg transition-colors"
+          className="px-4 py-2 bg-primary text-primary-foreground hover:bg-primary/90 rounded-xl transition-colors"
         >
-          📷 保存截图
+          保存截图
         </button>
       </div>
     </div>
