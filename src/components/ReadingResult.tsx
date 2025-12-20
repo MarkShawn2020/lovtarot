@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback, type MutableRefObject } from 'react'
 import type { TarotCard } from '../data/tarot'
 import { getReadingStream } from '../services/ai'
 import { StreamingTTS, splitTextToSentences } from '../services/tts-streaming'
@@ -8,9 +8,18 @@ interface Props {
   cards: TarotCard[]
   cachedReading?: string
   onComplete?: (reading: string) => void
+  onSpeakingChange?: (speaking: boolean) => void
+  speakToggleRef?: MutableRefObject<(() => void) | null>
 }
 
-export function ReadingResult({ question, cards, cachedReading, onComplete }: Props) {
+export function ReadingResult({
+  question,
+  cards,
+  cachedReading,
+  onComplete,
+  onSpeakingChange,
+  speakToggleRef,
+}: Props) {
   const [reading, setReading] = useState(cachedReading || '')
   const [isStreaming, setIsStreaming] = useState(!cachedReading)
   const [isSpeaking, setIsSpeaking] = useState(false)
@@ -19,6 +28,17 @@ export function ReadingResult({ question, cards, cachedReading, onComplete }: Pr
   const ttsRef = useRef<StreamingTTS | null>(null)
   const sentSentencesRef = useRef<Set<string>>(new Set())
   const isSpeakingRef = useRef(false)
+  const readingRef = useRef(reading)
+  const isStreamingRef = useRef(isStreaming)
+
+  // 同步 ref
+  useEffect(() => {
+    readingRef.current = reading
+  }, [reading])
+
+  useEffect(() => {
+    isStreamingRef.current = isStreaming
+  }, [isStreaming])
 
   // 发送新句子到 TTS
   const sendNewSentences = useCallback((text: string) => {
@@ -49,13 +69,11 @@ export function ReadingResult({ question, cards, cachedReading, onComplete }: Pr
           if (!cancelled) {
             fullReading += chunk
             setReading(fullReading)
-            // 如果正在播放，发送新句子
             sendNewSentences(fullReading)
           }
         })
         if (!cancelled) {
           onComplete?.(fullReading)
-          // AI 生成完毕，通知 TTS 结束
           if (ttsRef.current && isSpeakingRef.current) {
             ttsRef.current.finish()
           }
@@ -83,11 +101,14 @@ export function ReadingResult({ question, cards, cachedReading, onComplete }: Pr
     }
   }, [question, cards, cachedReading, onComplete, sendNewSentences])
 
-  const handleSpeak = async () => {
-    console.log('[DEBUG][ReadingResult] handleSpeak called, isSpeaking:', isSpeaking)
-    if (isSpeaking) {
+  // 同步 isSpeaking 到父组件
+  useEffect(() => {
+    onSpeakingChange?.(isSpeaking)
+  }, [isSpeaking, onSpeakingChange])
+
+  const handleSpeak = useCallback(async () => {
+    if (isSpeakingRef.current) {
       // 停止播放
-      console.log('[DEBUG][ReadingResult] 停止播放分支')
       if (ttsRef.current) {
         ttsRef.current.stop()
         ttsRef.current = null
@@ -96,7 +117,6 @@ export function ReadingResult({ question, cards, cachedReading, onComplete }: Pr
       setIsSpeaking(false)
     } else {
       // 开始播放
-      console.log('[DEBUG][ReadingResult] 开始播放分支')
       isSpeakingRef.current = true
       setIsSpeaking(true)
       sentSentencesRef.current.clear()
@@ -104,37 +124,41 @@ export function ReadingResult({ question, cards, cachedReading, onComplete }: Pr
       try {
         ttsRef.current = new StreamingTTS({
           onError: (err) => {
-            console.error('[DEBUG][ReadingResult] TTS onError:', err)
+            console.error('[TTS] Error:', err)
           },
           onEnd: () => {
-            console.log('[DEBUG][ReadingResult] TTS onEnd 回调触发')
             isSpeakingRef.current = false
             setIsSpeaking(false)
             ttsRef.current = null
           },
         })
 
-        console.log('[DEBUG][ReadingResult] 调用 tts.start()')
         await ttsRef.current.start()
-        console.log('[DEBUG][ReadingResult] tts.start() 完成')
+        sendNewSentences(readingRef.current)
 
-        // 发送已有的文本
-        console.log('[DEBUG][ReadingResult] 发送文本, reading长度:', reading.length, 'isStreaming:', isStreaming)
-        sendNewSentences(reading)
-
-        // 如果 AI 已经生成完毕，通知 TTS 结束
-        if (!isStreaming) {
-          console.log('[DEBUG][ReadingResult] AI已完成，调用 tts.finish()')
+        if (!isStreamingRef.current) {
           ttsRef.current.finish()
         }
       } catch (err) {
-        console.error('[DEBUG][ReadingResult] TTS start error:', err)
+        console.error('[TTS] Start error:', err)
         isSpeakingRef.current = false
         setIsSpeaking(false)
         ttsRef.current = null
       }
     }
-  }
+  }, [sendNewSentences])
+
+  // 暴露控制函数给父组件
+  useEffect(() => {
+    if (speakToggleRef) {
+      speakToggleRef.current = handleSpeak
+    }
+    return () => {
+      if (speakToggleRef) {
+        speakToggleRef.current = null
+      }
+    }
+  }, [speakToggleRef, handleSpeak])
 
   if (isStreaming && !reading) {
     return (
@@ -155,7 +179,6 @@ export function ReadingResult({ question, cards, cachedReading, onComplete }: Pr
     return (
       <div className="h-full flex flex-col bg-card/40 backdrop-blur-sm border border-border/30 rounded-xl p-4">
         <p className="text-destructive text-sm mb-3">{error}</p>
-        {/* 降级显示静态解读 */}
         <div className="flex-1 min-h-0 overflow-auto space-y-3">
           {cards.map((card, i) => (
             <div key={card.id} className="border-l-2 border-primary/60 pl-3">
@@ -172,31 +195,9 @@ export function ReadingResult({ question, cards, cachedReading, onComplete }: Pr
 
   return (
     <div className="h-full flex flex-col bg-card/40 backdrop-blur-sm border border-border/30 rounded-xl p-4">
-      <div className="flex items-center justify-between mb-3 shrink-0">
-        <h3 className="text-primary text-sm font-medium font-serif">
-          牌面解读
-        </h3>
-        <button
-          onClick={handleSpeak}
-          disabled={isStreaming}
-          className="flex items-center gap-1.5 px-2.5 py-1 bg-secondary/60
-                   hover:bg-primary hover:text-primary-foreground
-                   text-secondary-foreground rounded-lg transition-all text-xs
-                   disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-secondary/60"
-        >
-          {isSpeaking ? (
-            <>
-              <span className="text-xs">⏹</span>
-              停止
-            </>
-          ) : (
-            <>
-              <span className="text-xs">🔊</span>
-              语音
-            </>
-          )}
-        </button>
-      </div>
+      <h3 className="text-primary text-sm font-medium font-serif mb-3 shrink-0">
+        牌面解读
+      </h3>
 
       <div className="flex-1 min-h-0 overflow-auto pr-2">
         {reading.split('\n').map((paragraph, i, arr) => (

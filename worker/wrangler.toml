@@ -1,0 +1,10 @@
+name = "tts-proxy"
+main = "src/index.ts"
+compatibility_date = "2024-01-01"
+account_id = "d0dfc265e92c5edf8c98d091eb17e388"
+
+[dev]
+port = 8787
+
+[observability]
+enabled = true

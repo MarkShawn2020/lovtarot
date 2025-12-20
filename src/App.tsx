@@ -1,6 +1,4 @@
 import { Outlet } from 'react-router-dom'
-import { TTSTest } from './components/TTSTest'
-import { MusicControl } from './components/MusicControl'
 import { StarryBackground } from './components/StarryBackground'
 import './index.css'
 
@@ -24,12 +22,6 @@ function App() {
           塔罗牌仅供娱乐和自我探索
         </p>
       </div>
-
-      {/* TTS 测试组件 - 开发时使用 */}
-      <TTSTest />
-
-      {/* 背景音乐控制 */}
-      <MusicControl />
     </div>
   )
 }

@@ -1,8 +1,9 @@
-import { useState, useEffect } from 'react'
-import { useParams, useNavigate, Link } from 'react-router-dom'
+import { useState, useEffect, useRef } from 'react'
+import { useParams, useNavigate } from 'react-router-dom'
 import { getSession, updateReading } from '../services/session'
 import { CardDisplay } from '../components/CardDisplay'
 import { ReadingResult } from '../components/ReadingResult'
+import { FAB, type MenuItem } from '../components/FAB'
 
 export function ReadingPage() {
   const { id } = useParams<{ id: string }>()
@@ -10,7 +11,11 @@ export function ReadingPage() {
   const session = id ? getSession(id) : null
   const [showReading, setShowReading] = useState(true)
 
-  // 按键切换解读显隐
+  // 语音控制
+  const [isSpeaking, setIsSpeaking] = useState(false)
+  const speakToggleRef = useRef<(() => void) | null>(null)
+
+  // 快捷键
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === ' ' || e.key === 'r' || e.key === 'R') {
@@ -24,14 +29,16 @@ export function ReadingPage() {
 
   if (!session) {
     return (
-      <div className="text-center py-12">
-        <p className="text-muted-foreground mb-4">未找到该占卜记录</p>
-        <Link
-          to="/"
-          className="px-6 py-3 bg-primary text-primary-foreground rounded-xl inline-block"
-        >
-          开始新的占卜
-        </Link>
+      <div className="h-full flex items-center justify-center">
+        <div className="text-center">
+          <p className="text-muted-foreground mb-4">未找到该占卜记录</p>
+          <button
+            onClick={() => navigate('/')}
+            className="px-6 py-3 bg-primary text-primary-foreground rounded-xl"
+          >
+            开始新的占卜
+          </button>
+        </div>
       </div>
     )
   }
@@ -40,39 +47,45 @@ export function ReadingPage() {
     updateReading(session.id, reading)
   }
 
+  const menuItems: MenuItem[] = [
+    {
+      icon: showReading ? '👁️' : '👁️‍🗨️',
+      label: showReading ? '隐藏解读' : '显示解读',
+      shortcut: 'R',
+      onClick: () => setShowReading(prev => !prev),
+    },
+    {
+      icon: isSpeaking ? '⏹' : '🔊',
+      label: isSpeaking ? '停止语音' : '语音播放',
+      onClick: () => speakToggleRef.current?.(),
+      keepOpen: true,
+    },
+    {
+      icon: '🔄',
+      label: '重新开始',
+      onClick: () => navigate('/'),
+    },
+    {
+      icon: '📜',
+      label: '历史记录',
+      onClick: () => navigate('/history'),
+    },
+  ]
+
   return (
     <div className="w-full h-full flex flex-col">
-      {/* 标题区 */}
-      <div className="text-center mb-6 shrink-0">
-        <h1 className="text-3xl md:text-5xl font-bold text-primary font-serif leading-tight
-                       drop-shadow-sm">
-          {session.question}
-        </h1>
-        <div className="flex justify-center items-center gap-4 mt-4">
-          <button
-            onClick={() => navigate('/')}
-            className="px-4 py-1.5 bg-secondary/50 hover:bg-primary hover:text-primary-foreground
-                     text-secondary-foreground/80 rounded-lg transition-all text-xs"
-          >
-            重新开始
-          </button>
-          <Link
-            to="/history"
-            className="text-muted-foreground/60 hover:text-primary transition-colors text-xs"
-          >
-            历史记录
-          </Link>
-        </div>
-      </div>
+      {/* 标题 */}
+      <h1 className="text-center text-3xl md:text-5xl font-bold text-primary font-serif
+                     leading-tight drop-shadow-sm mb-6 shrink-0">
+        {session.question}
+      </h1>
 
-      {/* 主体：卡片组 + 解读 水平布局 */}
+      {/* 主体：卡片 + 解读 */}
       <div className="flex-1 min-h-0 flex gap-6">
-        {/* 左侧：三张卡片 */}
         <div className={`transition-all duration-300 ${showReading ? 'flex-1' : 'flex-[2]'}`}>
           <CardDisplay cards={session.cards} />
         </div>
 
-        {/* 右侧：解读区（可切换） */}
         <div className={`transition-all duration-300 overflow-hidden
                         ${showReading ? 'flex-1 opacity-100' : 'w-0 opacity-0'}`}>
           <ReadingResult
@@ -80,14 +93,13 @@ export function ReadingPage() {
             cards={session.cards}
             cachedReading={session.reading}
             onComplete={handleReadingComplete}
+            onSpeakingChange={setIsSpeaking}
+            speakToggleRef={speakToggleRef}
           />
         </div>
       </div>
 
-      {/* 快捷键提示 */}
-      <p className="text-center text-muted-foreground/40 text-xs mt-2 shrink-0">
-        按 空格 或 R 键切换解读
-      </p>
+      <FAB items={menuItems} />
     </div>
   )
 }
