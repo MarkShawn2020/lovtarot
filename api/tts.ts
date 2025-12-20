@@ -83,82 +83,62 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       body: JSON.stringify(ttsBody),
     })
 
+    // 读取完整响应用于调试
+    const responseText = await response.text()
+    console.log('[TTS V3] Response status:', response.status)
+    console.log('[TTS V3] Response headers:', JSON.stringify(Object.fromEntries(response.headers.entries())))
+    console.log('[TTS V3] Response body (first 500 chars):', responseText.substring(0, 500))
+
     if (!response.ok) {
-      const errorText = await response.text()
-      console.error('[TTS V3] HTTP error:', response.status, errorText)
-      return res.status(502).json({ error: 'TTS service error', details: errorText })
+      console.error('[TTS V3] HTTP error:', response.status, responseText)
+      return res.status(502).json({ error: 'TTS service error', details: responseText })
     }
 
     // V3 API 返回流式 JSON，每行是一个 JSON 对象
-    const reader = response.body?.getReader()
-    if (!reader) {
-      return res.status(502).json({ error: 'No response body' })
-    }
-
-    const decoder = new TextDecoder()
     const audioChunks: Buffer[] = []
-    let buffer = ''
+    const lines = responseText.split('\n')
 
-    while (true) {
-      const { done, value } = await reader.read()
-      if (done) break
+    for (const line of lines) {
+      const trimmed = line.trim()
+      if (!trimmed) continue
 
-      buffer += decoder.decode(value, { stream: true })
-
-      // 按行解析 JSON（每行一个完整的 JSON 对象）
-      const lines = buffer.split('\n')
-      buffer = lines.pop() || '' // 保留最后一行（可能不完整）
-
-      for (const line of lines) {
-        const trimmed = line.trim()
-        if (!trimmed) continue
-
-        try {
-          const data = JSON.parse(trimmed) as {
-            code: number
-            data?: string | null
-            message?: string
-            sentence?: object
-          }
-
-          // code: 0 表示正常数据
-          // code: 20000000 表示成功结束
-          // 其他 code 表示错误
-          if (data.code === 20000000) {
-            // 合成结束
-            continue
-          } else if (data.code !== 0) {
-            console.error('[TTS V3] Error:', data.code, data.message)
-            return res.status(400).json({
-              error: data.message || 'TTS synthesis failed',
-              code: data.code
-            })
-          }
-
-          // 收集音频数据（base64 编码）
-          if (data.data) {
-            audioChunks.push(Buffer.from(data.data, 'base64'))
-          }
-        } catch (parseErr) {
-          console.warn('[TTS V3] JSON parse warning:', parseErr, 'line:', trimmed.substring(0, 100))
-        }
-      }
-    }
-
-    // 处理剩余 buffer
-    if (buffer.trim()) {
       try {
-        const data = JSON.parse(buffer.trim()) as { code: number; data?: string | null }
-        if (data.code === 0 && data.data) {
+        const data = JSON.parse(trimmed) as {
+          code: number
+          data?: string | null
+          message?: string
+          sentence?: object
+        }
+
+        console.log('[TTS V3] Parsed line - code:', data.code, 'hasData:', !!data.data, 'message:', data.message)
+
+        // code: 0 表示正常数据
+        // code: 20000000 表示成功结束
+        // 其他 code 表示错误
+        if (data.code === 20000000) {
+          // 合成结束
+          continue
+        } else if (data.code !== 0) {
+          console.error('[TTS V3] Error:', data.code, data.message)
+          return res.status(400).json({
+            error: data.message || 'TTS synthesis failed',
+            code: data.code
+          })
+        }
+
+        // 收集音频数据（base64 编码）
+        if (data.data) {
           audioChunks.push(Buffer.from(data.data, 'base64'))
         }
-      } catch {
-        // 忽略最后的解析错误
+      } catch (parseErr) {
+        console.warn('[TTS V3] JSON parse warning:', parseErr, 'line:', trimmed.substring(0, 100))
       }
     }
 
+    console.log('[TTS V3] Total audio chunks:', audioChunks.length)
+
     if (audioChunks.length === 0) {
-      return res.status(502).json({ error: 'No audio data received' })
+      return res.status(502).json({ error: 'No audio data received', rawResponse: responseText.substring(0, 1000) })
     }
 
     // 合并所有音频 chunks
