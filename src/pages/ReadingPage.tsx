@@ -4,7 +4,6 @@ import { domToJpeg } from 'modern-screenshot'
 import { getSession, updateReading } from '../services/session'
 import { CardDisplay } from '../components/CardDisplay'
 import { ReadingResult } from '../components/ReadingResult'
-import { playBGM, pauseBGM, isBGMPlaying, initBGM, setVolume, getVolume } from '../services/bgm'
 
 export function ReadingPage() {
   const { id } = useParams<{ id: string }>()
@@ -14,29 +13,6 @@ export function ReadingPage() {
   const [isSpeaking, setIsSpeaking] = useState(false)
   const speakToggleRef = useRef<(() => void) | null>(null)
   const contentRef = useRef<HTMLDivElement>(null)
-
-  // 音乐控制
-  const [musicPlaying, setMusicPlaying] = useState(() => {
-    initBGM()
-    return isBGMPlaying()
-  })
-  const [showVolume, setShowVolume] = useState(false)
-  const [vol, setVol] = useState(() => getVolume())
-
-  const toggleMusic = useCallback(() => {
-    if (musicPlaying) {
-      pauseBGM()
-      setMusicPlaying(false)
-    } else {
-      playBGM().then(() => setMusicPlaying(isBGMPlaying()))
-    }
-  }, [musicPlaying])
-
-  const handleVolumeChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    const v = parseFloat(e.target.value)
-    setVol(v)
-    setVolume(v)
-  }, [])
 
   const takeScreenshot = useCallback(async () => {
     if (!contentRef.current) return
@@ -124,34 +100,6 @@ export function ReadingPage() {
         >
           📷 保存截图
         </button>
-        <span className="text-border">|</span>
-        <div className="relative">
-          <button
-            onClick={toggleMusic}
-            onMouseEnter={() => setShowVolume(true)}
-            onMouseLeave={() => setShowVolume(false)}
-            className="px-3 py-1.5 text-muted-foreground hover:text-foreground hover:bg-card/60 rounded-lg transition-colors"
-          >
-            {musicPlaying ? '⏸ 暂停音乐' : '🎵 播放音乐'}
-          </button>
-          {showVolume && (
-            <div
-              className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 bg-card/95 backdrop-blur-sm border border-border/50 rounded-xl shadow-lg px-3 py-2"
-              onMouseEnter={() => setShowVolume(true)}
-              onMouseLeave={() => setShowVolume(false)}
-            >
-              <input
-                type="range"
-                min="0"
-                max="1"
-                step="0.05"
-                value={vol}
-                onChange={handleVolumeChange}
-                className="w-20 h-1 accent-primary cursor-pointer"
-              />
-            </div>
-          )}
-        </div>
       </div>
     </div>
   )
