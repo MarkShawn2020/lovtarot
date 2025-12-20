@@ -5,7 +5,7 @@ const DOUBAO_TTS_WS_URL = 'wss://openspeech.bytedance.com/api/v1/tts/ws_binary'
 const getConfig = () => ({
   appId: import.meta.env.VITE_DOUBAO_TTS_APP_ID || '',
   accessToken: import.meta.env.VITE_DOUBAO_TTS_ACCESS_TOKEN || '',
-  voiceType: import.meta.env.VITE_DOUBAO_TTS_VOICE_TYPE || 'zh_female_vv_uranus_bigtts',
+  voiceType: import.meta.env.VITE_DOUBAO_TTS_VOICE_TYPE || 'zh_male_taocheng_uranus_bigtts',
 })
 
 function generateUUID(): string {
