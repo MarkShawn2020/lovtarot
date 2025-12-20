@@ -1,8 +1,9 @@
 {
-  "name": "temp-vite",
+  "name": "lovtarot",
   "private": true,
-  "version": "0.0.0",
+  "version": "0.1.0",
   "type": "module",
+  "packageManager": "pnpm@10.18.1",
   "scripts": {
     "dev": "vite",
     "dev:full": "vercel dev",
