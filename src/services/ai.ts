@@ -7,6 +7,8 @@ const client = new OpenAI({
   dangerouslyAllowBrowser: true
 })
 
+export type ChunkType = 'reasoning' | 'content'
+
 const SYSTEM_PROMPT = `你是一位温暖、有智慧的塔罗牌解读师。你的解读风格是：
 
 1. **温暖治愈**：用温柔、包容的语气，让人感到被理解和支持
@@ -28,7 +30,7 @@ const SYSTEM_PROMPT = `你是一位温暖、有智慧的塔罗牌解读师。你
 export async function getReadingStream(
   question: string,
   cards: TarotCard[],
-  onChunk: (text: string) => void
+  onChunk: (text: string, type: ChunkType) => void
 ): Promise<void> {
   const cardInfo = cards.map((card, i) => {
     const position = ['过去', '现在', '未来'][i]
@@ -54,9 +56,13 @@ ${cardInfo}
   })
 
   for await (const chunk of stream) {
-    const content = chunk.choices[0]?.delta?.content
-    if (content) {
-      onChunk(content)
+    const delta = chunk.choices[0]?.delta as { content?: string; reasoning?: string }
+
+    if (delta?.reasoning) {
+      onChunk(delta.reasoning, 'reasoning')
+    }
+    if (delta?.content) {
+      onChunk(delta.content, 'content')
     }
   }
 }
