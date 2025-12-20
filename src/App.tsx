@@ -5,6 +5,7 @@ import { CardDisplay } from './components/CardDisplay'
 import { QuestionInput } from './components/QuestionInput'
 import { ReadingResult } from './components/ReadingResult'
 import { TTSTest } from './components/TTSTest'
+import { MusicControl } from './components/MusicControl'
 import './index.css'
 
 type AppState = 'input' | 'drawing' | 'reading'
@@ -89,6 +90,9 @@ function App() {
 
       {/* TTS 测试组件 - 开发时使用 */}
       <TTSTest />
+
+      {/* 背景音乐控制 */}
+      <MusicControl />
     </div>
   )
 }

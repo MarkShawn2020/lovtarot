@@ -151,8 +151,7 @@ async function speakWithDoubao(text: string): Promise<void> {
   const config = getConfig()
 
   if (!config.appId || !config.accessToken) {
-    console.warn('豆包 TTS 未配置，使用浏览器 TTS')
-    return speakWithBrowserTTS(text)
+    throw new Error('豆包 TTS 未配置：请设置 VITE_DOUBAO_TTS_APP_ID 和 VITE_DOUBAO_TTS_ACCESS_TOKEN')
   }
 
   return new Promise((resolve, reject) => {
@@ -259,38 +258,8 @@ async function speakWithDoubao(text: string): Promise<void> {
   })
 }
 
-function speakWithBrowserTTS(text: string): Promise<void> {
-  return new Promise((resolve, reject) => {
-    if (!window.speechSynthesis) {
-      reject(new Error('浏览器不支持语音合成'))
-      return
-    }
-
-    const utterance = new SpeechSynthesisUtterance(text)
-    utterance.lang = 'zh-CN'
-    utterance.rate = 0.9
-    utterance.pitch = 1
-
-    const voices = window.speechSynthesis.getVoices()
-    const chineseVoice = voices.find((v) => v.lang.includes('zh'))
-    if (chineseVoice) {
-      utterance.voice = chineseVoice
-    }
-
-    utterance.onend = () => resolve()
-    utterance.onerror = (e) => reject(e)
-
-    window.speechSynthesis.speak(utterance)
-  })
-}
-
 export async function speak(text: string): Promise<void> {
-  try {
-    await speakWithDoubao(text)
-  } catch (error) {
-    console.error('豆包 TTS 失败，回退到浏览器 TTS:', error)
-    await speakWithBrowserTTS(text)
-  }
+  await speakWithDoubao(text)
 }
 
 export function stopSpeaking(): void {
@@ -298,16 +267,5 @@ export function stopSpeaking(): void {
     currentAudio.pause()
     currentAudio.src = ''
     currentAudio = null
-  }
-  if (window.speechSynthesis) {
-    window.speechSynthesis.cancel()
-  }
-}
-
-// 预加载浏览器语音列表
-if (typeof window !== 'undefined' && window.speechSynthesis) {
-  window.speechSynthesis.getVoices()
-  window.speechSynthesis.onvoiceschanged = () => {
-    window.speechSynthesis.getVoices()
   }
 }
