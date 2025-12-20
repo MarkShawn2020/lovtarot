@@ -1,10 +1,13 @@
 import { useState, useEffect, useCallback } from 'react'
 import { playBGM, pauseBGM, isBGMPlaying, setVolume, getVolume, initBGM, tryAutoPlay } from '../services/bgm'
+import { hasTTS, toggleTTS, isTTSSpeaking, subscribeTTS } from '../services/tts-control'
 
 export function MusicControl() {
   const [playing, setPlaying] = useState(false)
   const [vol, setVol] = useState(0.15)
   const [showVolume, setShowVolume] = useState(false)
+  const [speaking, setSpeaking] = useState(false)
+  const [ttsAvailable, setTtsAvailable] = useState(false)
 
   useEffect(() => {
     initBGM()
@@ -24,6 +27,22 @@ export function MusicControl() {
     return () => {
       document.removeEventListener('click', handleInteraction)
       document.removeEventListener('keydown', handleInteraction)
+    }
+  }, [])
+
+  // 订阅 TTS 状态
+  useEffect(() => {
+    const updateTTS = () => {
+      setTtsAvailable(hasTTS())
+      setSpeaking(isTTSSpeaking())
+    }
+    updateTTS()
+    const unsubscribe = subscribeTTS(updateTTS)
+    // 定期检查 TTS 可用性
+    const interval = setInterval(updateTTS, 500)
+    return () => {
+      unsubscribe()
+      clearInterval(interval)
     }
   }, [])
 
@@ -48,6 +67,27 @@ export function MusicControl() {
       onMouseEnter={() => setShowVolume(true)}
       onMouseLeave={() => setShowVolume(false)}
     >
+      {/* 语音控制按钮 - 只在有 TTS 可用时显示 */}
+      {ttsAvailable && (
+        <button
+          onClick={toggleTTS}
+          className="w-10 h-10 rounded-full bg-secondary/80 hover:bg-secondary border border-border
+                     flex items-center justify-center transition-all shadow-sm hover:shadow"
+          title={speaking ? '停止语音' : '播放语音'}
+        >
+          {speaking ? (
+            <svg className="w-5 h-5 text-primary" fill="currentColor" viewBox="0 0 24 24">
+              <path d="M6 6h12v12H6z"/>
+            </svg>
+          ) : (
+            <svg className="w-5 h-5 text-primary" fill="currentColor" viewBox="0 0 24 24">
+              <path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/>
+            </svg>
+          )}
+        </button>
+      )}
+
+      {/* BGM 控制按钮 */}
       <button
         onClick={handleToggle}
         className="w-10 h-10 rounded-full bg-secondary/80 hover:bg-secondary border border-border

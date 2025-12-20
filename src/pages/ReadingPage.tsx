@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from 'react'
+import { useRef, useCallback } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { domToJpeg } from 'modern-screenshot'
 import { getSession, updateReading } from '../services/session'
@@ -9,9 +9,6 @@ export function ReadingPage() {
   const { id } = useParams<{ id: string }>()
   const session = id ? getSession(id) : null
 
-  // 语音控制
-  const [isSpeaking, setIsSpeaking] = useState(false)
-  const speakToggleRef = useRef<(() => void) | null>(null)
   const contentRef = useRef<HTMLDivElement>(null)
 
   const takeScreenshot = useCallback(async () => {
@@ -79,21 +76,12 @@ export function ReadingPage() {
             cards={session.cards}
             cachedReading={session.reading}
             onComplete={handleReadingComplete}
-            onSpeakingChange={setIsSpeaking}
-            speakToggleRef={speakToggleRef}
           />
         </div>
       </div>
 
       {/* 底部工具栏 */}
-      <div className="mt-8 flex items-center justify-center gap-2 text-sm">
-        <button
-          onClick={() => speakToggleRef.current?.()}
-          className="px-3 py-1.5 text-muted-foreground hover:text-foreground hover:bg-card/60 rounded-lg transition-colors"
-        >
-          {isSpeaking ? '⏹ 停止语音' : '🔊 语音播放'}
-        </button>
-        <span className="text-border">|</span>
+      <div className="mt-8 flex items-center justify-center text-sm">
         <button
           onClick={takeScreenshot}
           className="px-3 py-1.5 text-muted-foreground hover:text-foreground hover:bg-card/60 rounded-lg transition-colors"

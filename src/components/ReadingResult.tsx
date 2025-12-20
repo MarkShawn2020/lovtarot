@@ -1,15 +1,14 @@
-import { useState, useEffect, useRef, useCallback, type MutableRefObject } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import type { TarotCard } from '../data/tarot'
 import { getReadingStream } from '../services/ai'
 import { StreamingTTS, splitTextToSentences } from '../services/tts-streaming'
+import { registerTTS, unregisterTTS, notifyListeners } from '../services/tts-control'
 
 interface Props {
   question: string
   cards: TarotCard[]
   cachedReading?: string
   onComplete?: (reading: string) => void
-  onSpeakingChange?: (speaking: boolean) => void
-  speakToggleRef?: MutableRefObject<(() => void) | null>
 }
 
 export function ReadingResult({
@@ -17,13 +16,12 @@ export function ReadingResult({
   cards,
   cachedReading,
   onComplete,
-  onSpeakingChange,
-  speakToggleRef,
 }: Props) {
   const [reading, setReading] = useState(cachedReading || '')
   const [isStreaming, setIsStreaming] = useState(!cachedReading)
-  const [isSpeaking, setIsSpeaking] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [retryCount, setRetryCount] = useState(0)
+  const [ignoreCache, setIgnoreCache] = useState(false)
 
   const ttsRef = useRef<StreamingTTS | null>(null)
   const sentSentencesRef = useRef<Set<string>>(new Set())
@@ -42,7 +40,7 @@ export function ReadingResult({
 
   // 发送新句子到 TTS
   const sendNewSentences = useCallback((text: string) => {
-    if (!isSpeakingRef.current || !ttsRef.current) return
+    if (!ttsRef.current) return
 
     const sentences = splitTextToSentences(text)
     for (const sentence of sentences) {
@@ -53,28 +51,101 @@ export function ReadingResult({
     }
   }, [])
 
+  // 开始 TTS
+  const startTTS = useCallback(async () => {
+    if (ttsRef.current) return
+
+    try {
+      ttsRef.current = new StreamingTTS({
+        onError: (err) => console.error('[TTS] Error:', err),
+        onEnd: () => {
+          isSpeakingRef.current = false
+          ttsRef.current = null
+          notifyListeners()
+        },
+      })
+
+      await ttsRef.current.start()
+      isSpeakingRef.current = true
+      sentSentencesRef.current.clear()
+      sendNewSentences(readingRef.current)
+      notifyListeners()
+
+      if (!isStreamingRef.current) {
+        ttsRef.current.finish()
+      }
+    } catch (err) {
+      console.error('[TTS] Start error:', err)
+      ttsRef.current = null
+    }
+  }, [sendNewSentences])
+
+  // 停止 TTS
+  const stopTTS = useCallback(() => {
+    if (ttsRef.current) {
+      ttsRef.current.stop()
+      ttsRef.current = null
+    }
+    isSpeakingRef.current = false
+    notifyListeners()
+  }, [])
+
+  // 切换 TTS
+  const toggleTTS = useCallback(() => {
+    if (isSpeakingRef.current) {
+      stopTTS()
+    } else {
+      startTTS()
+    }
+  }, [startTTS, stopTTS])
+
+  // 重试
+  const handleRetry = useCallback(() => {
+    console.log('[DEBUG][ReadingResult] handleRetry 被调用')
+    stopTTS()
+    sentSentencesRef.current.clear()
+    setReading('')
+    setError(null)
+    setIgnoreCache(true)
+    setRetryCount(c => c + 1)
+  }, [stopTTS])
+
   useEffect(() => {
-    if (cachedReading) return
+    console.log('[DEBUG][ReadingResult] useEffect 触发:', { cachedReading: !!cachedReading, ignoreCache, retryCount })
+    if (cachedReading && !ignoreCache) {
+      console.log('[DEBUG][ReadingResult] 使用缓存，跳过 fetchReading')
+      return
+    }
 
     let cancelled = false
     let fullReading = ''
+    let ttsStarted = false
 
     async function fetchReading() {
+      console.log('[DEBUG][ReadingResult] fetchReading 开始执行')
       setIsStreaming(true)
       setReading('')
       setError(null)
 
       try {
-        await getReadingStream(question, cards, (chunk) => {
-          if (!cancelled) {
-            fullReading += chunk
-            setReading(fullReading)
-            sendNewSentences(fullReading)
+        await getReadingStream(question, cards, async (chunk) => {
+          if (cancelled) return
+
+          fullReading += chunk
+          setReading(fullReading)
+
+          // 首次收到文本时自动开始 TTS
+          if (!ttsStarted && fullReading.length > 0) {
+            ttsStarted = true
+            await startTTS()
           }
+
+          sendNewSentences(fullReading)
         })
+
         if (!cancelled) {
           onComplete?.(fullReading)
-          if (ttsRef.current && isSpeakingRef.current) {
+          if (ttsRef.current) {
             ttsRef.current.finish()
           }
         }
@@ -94,83 +165,25 @@ export function ReadingResult({
 
     return () => {
       cancelled = true
-      if (ttsRef.current) {
-        ttsRef.current.stop()
-        ttsRef.current = null
-      }
+      stopTTS()
     }
-  }, [question, cards, cachedReading, onComplete, sendNewSentences])
+  }, [question, cards, cachedReading, ignoreCache, onComplete, sendNewSentences, startTTS, stopTTS, retryCount])
 
-  // 同步 isSpeaking 到父组件
+  // 注册到全局 TTS 控制
   useEffect(() => {
-    onSpeakingChange?.(isSpeaking)
-  }, [isSpeaking, onSpeakingChange])
-
-  const handleSpeak = useCallback(async () => {
-    if (isSpeakingRef.current) {
-      // 停止播放
-      if (ttsRef.current) {
-        ttsRef.current.stop()
-        ttsRef.current = null
-      }
-      isSpeakingRef.current = false
-      setIsSpeaking(false)
-    } else {
-      // 开始播放
-      isSpeakingRef.current = true
-      setIsSpeaking(true)
-      sentSentencesRef.current.clear()
-
-      try {
-        ttsRef.current = new StreamingTTS({
-          onError: (err) => {
-            console.error('[TTS] Error:', err)
-          },
-          onEnd: () => {
-            isSpeakingRef.current = false
-            setIsSpeaking(false)
-            ttsRef.current = null
-          },
-        })
-
-        await ttsRef.current.start()
-        sendNewSentences(readingRef.current)
-
-        if (!isStreamingRef.current) {
-          ttsRef.current.finish()
-        }
-      } catch (err) {
-        console.error('[TTS] Start error:', err)
-        isSpeakingRef.current = false
-        setIsSpeaking(false)
-        ttsRef.current = null
-      }
-    }
-  }, [sendNewSentences])
-
-  // 暴露控制函数给父组件
-  useEffect(() => {
-    if (speakToggleRef) {
-      speakToggleRef.current = handleSpeak
-    }
-    return () => {
-      if (speakToggleRef) {
-        speakToggleRef.current = null
-      }
-    }
-  }, [speakToggleRef, handleSpeak])
+    registerTTS({
+      toggle: toggleTTS,
+      stop: stopTTS,
+      isSpeaking: () => isSpeakingRef.current,
+    })
+    return () => unregisterTTS()
+  }, [toggleTTS, stopTTS])
 
   // 页面刷新/关闭前停止 TTS
   useEffect(() => {
-    const handleBeforeUnload = () => {
-      if (ttsRef.current) {
-        ttsRef.current.stop()
-        ttsRef.current = null
-      }
-    }
-    window.addEventListener('beforeunload', handleBeforeUnload)
-    return () => window.removeEventListener('beforeunload', handleBeforeUnload)
-  }, [])
+    window.addEventListener('beforeunload', stopTTS)
+    return () => window.removeEventListener('beforeunload', stopTTS)
+  }, [stopTTS])
 
   if (isStreaming && !reading) {
     return (
@@ -190,7 +203,15 @@ export function ReadingResult({
   if (error) {
     return (
       <div className="h-full flex flex-col bg-card/40 backdrop-blur-sm border border-border/30 rounded-xl p-4">
-        <p className="text-destructive text-sm mb-3">{error}</p>
+        <div className="flex items-center justify-between mb-3">
+          <p className="text-destructive text-sm">{error}</p>
+          <button
+            onClick={handleRetry}
+            className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+          >
+            重试
+          </button>
+        </div>
         <div className="flex-1 min-h-0 overflow-auto space-y-3">
           {cards.map((card, i) => (
             <div key={card.id} className="border-l-2 border-primary/60 pl-3">
@@ -207,9 +228,19 @@ export function ReadingResult({
 
   return (
     <div className="h-full flex flex-col bg-card/40 backdrop-blur-sm border border-border/30 rounded-xl p-4">
-      <h3 className="text-primary text-sm font-medium font-serif mb-3 shrink-0">
-        牌面解读
-      </h3>
+      <div className="flex items-center justify-between mb-3 shrink-0">
+        <h3 className="text-primary text-sm font-medium font-serif">
+          牌面解读
+        </h3>
+        {!isStreaming && (
+          <button
+            onClick={handleRetry}
+            className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+          >
+            重新解读
+          </button>
+        )}
+      </div>
 
       <div className="flex-1 min-h-0 overflow-auto pr-2">
         {reading.split('\n').map((paragraph, i, arr) => (
