@@ -5,6 +5,7 @@ export interface Session {
   question: string
   cards: TarotCard[]
   reading?: string
+  reasoning?: string
   createdAt: number
 }
 
@@ -45,10 +46,13 @@ export function createSession(question: string, cards: TarotCard[]): Session {
   return session
 }
 
-export function updateReading(id: string, reading: string): void {
+export function updateReading(id: string, reading: string, reasoning?: string): void {
   const session = getSession(id)
   if (session) {
     session.reading = reading
+    if (reasoning !== undefined) {
+      session.reasoning = reasoning
+    }
     saveSession(session)
   }
 }

@@ -39,8 +39,8 @@ export function ReadingPage() {
     )
   }
 
-  const handleReadingComplete = (reading: string) => {
-    updateReading(session.id, reading)
+  const handleReadingComplete = (reading: string, reasoning: string) => {
+    updateReading(session.id, reading, reasoning)
   }
 
   return (
@@ -75,6 +75,7 @@ export function ReadingPage() {
             question={session.question}
             cards={session.cards}
             cachedReading={session.reading}
+            cachedReasoning={session.reasoning}
             onComplete={handleReadingComplete}
           />
         </div>

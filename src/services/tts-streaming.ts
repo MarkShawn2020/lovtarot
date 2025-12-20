@@ -197,18 +197,55 @@ export class StreamingTTS {
   }
 }
 
-// 简化版：分句发送的辅助函数
-export function splitTextToSentences(text: string): string[] {
-  // 按中文标点分句
-  const sentences = text.split(/([。！？；\n]+)/).filter(Boolean)
-  const result: string[] = []
+// 智能断句器：处理流式文本，只返回完整句子
+export class SentenceBuffer {
+  private buffer = ''
+  private sentSentences = new Set<string>()
 
-  for (let i = 0; i < sentences.length; i += 2) {
-    const sentence = sentences[i] + (sentences[i + 1] || '')
-    if (sentence.trim()) {
-      result.push(sentence.trim())
+  // 添加新文本，返回新的完整句子
+  addText(text: string): string[] {
+    this.buffer = text
+    const newSentences: string[] = []
+
+    // 匹配所有完整句子（以中文标点或换行结尾）
+    const pattern = /[^。！？；\n]+[。！？；\n]+/g
+    let match: RegExpExecArray | null
+
+    while ((match = pattern.exec(this.buffer)) !== null) {
+      const sentence = match[0].trim()
+      if (sentence && !this.sentSentences.has(sentence)) {
+        this.sentSentences.add(sentence)
+        newSentences.push(sentence)
+      }
     }
+
+    return newSentences
   }
 
-  return result
+  // 流结束时，发送剩余的不完整句子
+  flush(): string | null {
+    // 找到最后一个标点后的内容
+    const lastPuncIndex = Math.max(
+      this.buffer.lastIndexOf('。'),
+      this.buffer.lastIndexOf('！'),
+      this.buffer.lastIndexOf('？'),
+      this.buffer.lastIndexOf('；'),
+      this.buffer.lastIndexOf('\n')
+    )
+
+    const remaining = lastPuncIndex >= 0
+      ? this.buffer.slice(lastPuncIndex + 1).trim()
+      : this.buffer.trim()
+
+    if (remaining && !this.sentSentences.has(remaining)) {
+      this.sentSentences.add(remaining)
+      return remaining
+    }
+    return null
+  }
+
+  clear(): void {
+    this.buffer = ''
+    this.sentSentences.clear()
+  }
 }
