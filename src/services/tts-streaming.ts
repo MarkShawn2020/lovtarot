@@ -2,10 +2,7 @@
 // 直接调用 /api/tts (Vercel Serverless Function)
 
 const getConfig = () => ({
-  appId: import.meta.env.VITE_DOUBAO_TTS_APP_ID || '',
-  accessToken: import.meta.env.VITE_DOUBAO_TTS_ACCESS_TOKEN || '',
   voiceType: import.meta.env.VITE_DOUBAO_TTS_VOICE_TYPE || 'zh_female_wanqudashu_moon_bigtts',
-  resourceId: import.meta.env.VITE_DOUBAO_TTS_RESOURCE_ID || 'seed-tts-1.0',
 })
 
 type AudioChunk = {
@@ -33,12 +30,6 @@ export class StreamingTTS {
   }
 
   async start(): Promise<void> {
-    const config = getConfig()
-
-    if (!config.appId || !config.accessToken) {
-      throw new Error('豆包 TTS 未配置：请设置 VITE_DOUBAO_TTS_APP_ID 和 VITE_DOUBAO_TTS_ACCESS_TOKEN')
-    }
-
     this.isStopped = false
     this.isFinished = false
     this.pendingRequests = 0
@@ -77,9 +68,6 @@ export class StreamingTTS {
         signal: this.abortController?.signal,
         body: JSON.stringify({
           text,
-          appId: config.appId,
-          accessToken: config.accessToken,
-          resourceId: config.resourceId,
           voiceType: config.voiceType,
           encoding: 'mp3',
         }),

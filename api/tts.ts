@@ -7,9 +7,6 @@ const TTS_V3_ENDPOINT = 'https://openspeech.bytedance.com/api/v3/tts/unidirectio
 
 interface TTSRequestBody {
   text: string
-  appId: string
-  accessToken: string
-  resourceId?: string // 默认 seed-tts-1.0
   voiceType?: string
   encoding?: string
   sampleRate?: number
@@ -37,13 +34,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (!body.text) {
       return res.status(400).json({ error: 'Missing text' })
     }
-    if (!body.appId || !body.accessToken) {
-      return res.status(400).json({ error: 'Missing appId or accessToken' })
+
+    // 从服务端环境变量读取认证信息
+    const appId = process.env.VITE_DOUBAO_TTS_APP_ID
+    const accessToken = process.env.VITE_DOUBAO_TTS_ACCESS_TOKEN
+
+    if (!appId || !accessToken) {
+      return res.status(500).json({ error: 'TTS not configured on server' })
     }
 
-    const voiceType = body.voiceType || 'zh_female_wanqudashu_moon_bigtts'
+    const voiceType = body.voiceType || process.env.VITE_DOUBAO_TTS_VOICE_TYPE || 'zh_female_wanqudashu_moon_bigtts'
     // 根据音色自动选择 resourceId
-    const resourceId = body.resourceId || (voiceType.startsWith('S_') ? 'seed-icl-1.0' : 'seed-tts-1.0')
+    const resourceId = process.env.VITE_DOUBAO_TTS_RESOURCE_ID || (voiceType.startsWith('S_') ? 'seed-icl-1.0' : 'seed-tts-1.0')
 
     const ttsBody = {
       user: { uid: 'vercel_user_' + Date.now() },
@@ -63,8 +65,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'X-Api-App-Id': body.appId,
-        'X-Api-Access-Key': body.accessToken,
+        'X-Api-App-Id': appId,
+        'X-Api-Access-Key': accessToken,
         'X-Api-Resource-Id': resourceId,
         'X-Api-Request-Id': crypto.randomUUID(),
       },
