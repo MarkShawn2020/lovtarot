@@ -17,6 +17,8 @@ export function ReadingResult({
   cachedReading,
   onComplete,
 }: Props) {
+  const [reasoning, setReasoning] = useState('')
+  const [reasoningExpanded, setReasoningExpanded] = useState(false)
   const [reading, setReading] = useState(cachedReading || '')
   const [isStreaming, setIsStreaming] = useState(!cachedReading)
   const [error, setError] = useState<string | null>(null)
@@ -101,9 +103,10 @@ export function ReadingResult({
 
   // 重试
   const handleRetry = useCallback(() => {
-    console.log('[DEBUG][ReadingResult] handleRetry 被调用')
     stopTTS()
     sentSentencesRef.current.clear()
+    setReasoning('')
+    setReasoningExpanded(false)
     setReading('')
     setError(null)
     setIgnoreCache(true)
@@ -111,36 +114,38 @@ export function ReadingResult({
   }, [stopTTS])
 
   useEffect(() => {
-    console.log('[DEBUG][ReadingResult] useEffect 触发:', { cachedReading: !!cachedReading, ignoreCache, retryCount })
-    if (cachedReading && !ignoreCache) {
-      console.log('[DEBUG][ReadingResult] 使用缓存，跳过 fetchReading')
-      return
-    }
+    if (cachedReading && !ignoreCache) return
 
     let cancelled = false
+    let fullReasoning = ''
     let fullReading = ''
     let ttsStarted = false
 
     async function fetchReading() {
-      console.log('[DEBUG][ReadingResult] fetchReading 开始执行')
       setIsStreaming(true)
+      setReasoning('')
       setReading('')
       setError(null)
 
       try {
-        await getReadingStream(question, cards, async (chunk) => {
+        await getReadingStream(question, cards, async (chunk, type) => {
           if (cancelled) return
 
-          fullReading += chunk
-          setReading(fullReading)
+          if (type === 'reasoning') {
+            fullReasoning += chunk
+            setReasoning(fullReasoning)
+          } else {
+            fullReading += chunk
+            setReading(fullReading)
 
-          // 首次收到文本时自动开始 TTS
-          if (!ttsStarted && fullReading.length > 0) {
-            ttsStarted = true
-            await startTTS()
+            // 首次收到内容时自动开始 TTS（只朗读 content）
+            if (!ttsStarted && fullReading.length > 0) {
+              ttsStarted = true
+              await startTTS()
+            }
+
+            sendNewSentences(fullReading)
           }
-
-          sendNewSentences(fullReading)
         })
 
         if (!cancelled) {
@@ -185,21 +190,6 @@ export function ReadingResult({
     return () => window.removeEventListener('beforeunload', stopTTS)
   }, [stopTTS])
 
-  if (isStreaming && !reading) {
-    return (
-      <div className="h-full flex flex-col items-center justify-center bg-card/40 backdrop-blur-sm border border-border/30 rounded-xl p-4">
-        <div className="flex items-center gap-2">
-          <div className="w-1.5 h-1.5 bg-primary rounded-full" style={{ animation: 'bounce 1s infinite' }} />
-          <div className="w-1.5 h-1.5 bg-primary rounded-full" style={{ animation: 'bounce 1s infinite 100ms' }} />
-          <div className="w-1.5 h-1.5 bg-primary rounded-full" style={{ animation: 'bounce 1s infinite 200ms' }} />
-        </div>
-        <p className="text-muted-foreground/80 text-sm mt-3">
-          正在为你解读牌面...
-        </p>
-      </div>
-    )
-  }
-
   if (error) {
     return (
       <div className="h-full flex flex-col bg-card/40 backdrop-blur-sm border border-border/30 rounded-xl p-4">
@@ -232,27 +222,55 @@ export function ReadingResult({
         <h3 className="text-primary text-sm font-medium font-serif">
           牌面解读
         </h3>
-        {!isStreaming && (
-          <button
-            onClick={handleRetry}
-            className="text-xs text-muted-foreground hover:text-foreground transition-colors"
-          >
-            重新解读
-          </button>
-        )}
+        <div className="flex items-center gap-3">
+          {reasoning && (
+            <button
+              onClick={() => setReasoningExpanded(e => !e)}
+              className="flex items-center gap-1.5 text-xs text-muted-foreground/70 hover:text-muted-foreground transition-colors"
+            >
+              {isStreaming && !reading && (
+                <span className="w-1.5 h-1.5 bg-primary rounded-full animate-pulse" />
+              )}
+              <span>思考过程</span>
+              <span className="text-[10px]">{reasoningExpanded ? '▲' : '▼'}</span>
+            </button>
+          )}
+          {!isStreaming && reading && (
+            <button
+              onClick={handleRetry}
+              className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+            >
+              重新解读
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="flex-1 min-h-0 overflow-auto pr-2">
-        {reading.split('\n').map((paragraph, i, arr) => (
-          paragraph.trim() && (
-            <p key={i} className="text-foreground/90 leading-relaxed text-sm mb-3">
-              {paragraph}
-              {isStreaming && i === arr.length - 1 && (
-                <span className="inline-block w-1.5 h-3.5 bg-primary/60 ml-0.5 animate-pulse" />
-              )}
+        {/* 思考过程 */}
+        {reasoning && reasoningExpanded && (
+          <div className="mb-3 pb-3 border-b border-border/30">
+            <p className="text-muted-foreground/60 text-xs leading-relaxed italic whitespace-pre-wrap">
+              {reasoning}
             </p>
-          )
-        ))}
+          </div>
+        )}
+
+        {/* 牌面解读内容 */}
+        {!reading && isStreaming ? (
+          <p className="text-muted-foreground/60 text-sm">正在生成解读...</p>
+        ) : (
+          reading.split('\n').map((paragraph, i, arr) => (
+            paragraph.trim() && (
+              <p key={i} className="text-foreground/90 leading-relaxed text-sm mb-3">
+                {paragraph}
+                {isStreaming && i === arr.length - 1 && (
+                  <span className="inline-block w-1.5 h-3.5 bg-primary/60 ml-0.5 animate-pulse" />
+                )}
+              </p>
+            )
+          ))
+        )}
       </div>
     </div>
   )

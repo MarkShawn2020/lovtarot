@@ -1,5 +1,7 @@
 # CLAUDE.md
 
+你完成任务后不要 pnpm build，因为我在pnpm dev，你直接 tsc check 即可。
+
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ## Project Overview
