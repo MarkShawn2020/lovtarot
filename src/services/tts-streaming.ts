@@ -2,7 +2,7 @@
 // 直接调用 /api/tts (Vercel Serverless Function)
 
 const getConfig = () => ({
-  voiceType: import.meta.env.VITE_DOUBAO_TTS_VOICE_TYPE || 'zh_female_wanqudashu_moon_bigtts',
+  voiceType: (import.meta.env.VITE_DOUBAO_TTS_VOICE_TYPE || 'zh_female_wanqudashu_moon_bigtts').trim(),
 })
 
 type AudioChunk = {
