@@ -17,34 +17,36 @@ function generateUUID(): string {
 }
 
 // 二进制协议常量
-enum MsgType {
-  FullClientRequest = 0b0001,
-  AudioOnlyServer = 0b1011,
-  FrontEndResultServer = 0b1100,
-  Error = 0b1111,
-}
+const MsgType = {
+  FullClientRequest: 0b0001,
+  AudioOnlyServer: 0b1011,
+  FrontEndResultServer: 0b1100,
+  Error: 0b1111,
+} as const
 
-enum MsgTypeFlagBits {
-  NoSeq = 0,
-  PositiveSeq = 0b0001,
-  NegativeSeq = 0b0011,
-}
+const MsgTypeFlagBits = {
+  NoSeq: 0,
+  PositiveSeq: 0b0001,
+  NegativeSeq: 0b0011,
+} as const
 
-enum HeaderSizeBits {
-  HeaderSize4 = 1,
-}
+const HeaderSizeBits = {
+  HeaderSize4: 1,
+} as const
 
-enum VersionBits {
-  Version1 = 1,
-}
+const VersionBits = {
+  Version1: 1,
+} as const
 
-enum SerializationBits {
-  JSON = 0b0001,
-}
+const SerializationBits = {
+  JSON: 0b0001,
+} as const
 
-enum CompressionBits {
-  None = 0,
-}
+const CompressionBits = {
+  None: 0,
+} as const
+
+type MsgTypeValue = (typeof MsgType)[keyof typeof MsgType]
 
 // 序列化请求消息
 function marshalMessage(payload: Uint8Array): Uint8Array {
@@ -75,7 +77,7 @@ function marshalMessage(payload: Uint8Array): Uint8Array {
 
 // 解析响应消息
 interface ParsedMessage {
-  type: MsgType
+  type: MsgTypeValue
   flag: number
   sequence?: number
   payload: Uint8Array
@@ -89,7 +91,7 @@ function unmarshalMessage(data: Uint8Array): ParsedMessage {
 
   const headerSizeUnits = data[0] & 0x0f
   const headerSize = headerSizeUnits * 4
-  const msgType = (data[1] >> 4) as MsgType
+  const msgType = (data[1] >> 4) as MsgTypeValue
   const flag = data[1] & 0x0f
 
   let offset = headerSize
