@@ -59,13 +59,13 @@ export function ReadingResult({ question, cards }: Props) {
 
   if (isLoading) {
     return (
-      <div className="bg-[var(--color-card)] rounded-xl p-6 max-w-2xl mx-auto">
+      <div className="bg-card border border-border rounded-2xl p-6 max-w-2xl mx-auto">
         <div className="flex items-center justify-center gap-3">
-          <div className="w-2 h-2 bg-[var(--color-accent)] rounded-full animate-bounce" />
-          <div className="w-2 h-2 bg-[var(--color-accent)] rounded-full animate-bounce delay-100" />
-          <div className="w-2 h-2 bg-[var(--color-accent)] rounded-full animate-bounce delay-200" />
+          <div className="w-2 h-2 bg-primary rounded-full animate-bounce" />
+          <div className="w-2 h-2 bg-primary rounded-full animate-bounce delay-100" />
+          <div className="w-2 h-2 bg-primary rounded-full animate-bounce delay-200" />
         </div>
-        <p className="text-center text-[var(--color-muted)] mt-4">
+        <p className="text-center text-muted-foreground mt-4">
           正在为你解读牌面...
         </p>
       </div>
@@ -74,16 +74,16 @@ export function ReadingResult({ question, cards }: Props) {
 
   if (error) {
     return (
-      <div className="bg-[var(--color-card)] rounded-xl p-6 max-w-2xl mx-auto">
-        <p className="text-center text-red-400">{error}</p>
+      <div className="bg-card border border-border rounded-2xl p-6 max-w-2xl mx-auto">
+        <p className="text-center text-destructive">{error}</p>
         {/* 降级显示静态解读 */}
         <div className="mt-4 space-y-4">
           {cards.map((card, i) => (
-            <div key={card.id} className="border-l-2 border-[var(--color-accent)] pl-4">
-              <h4 className="text-[var(--color-accent)] font-medium">
+            <div key={card.id} className="border-l-2 border-primary pl-4">
+              <h4 className="text-primary font-medium font-serif">
                 {['过去', '现在', '未来'][i]} · {card.name}
               </h4>
-              <p className="text-[var(--color-text)] mt-1">{card.meaning}</p>
+              <p className="text-foreground mt-1">{card.meaning}</p>
             </div>
           ))}
         </div>
@@ -92,15 +92,16 @@ export function ReadingResult({ question, cards }: Props) {
   }
 
   return (
-    <div className="bg-[var(--color-card)] rounded-xl p-6 max-w-2xl mx-auto">
+    <div className="bg-card border border-border rounded-2xl p-6 max-w-2xl mx-auto">
       <div className="flex items-center justify-between mb-4">
-        <h3 className="text-[var(--color-accent)] font-medium">
+        <h3 className="text-primary font-medium font-serif">
           牌面解读
         </h3>
         <button
           onClick={handleSpeak}
-          className="flex items-center gap-2 px-3 py-1.5 bg-[var(--color-primary)]
-                   hover:bg-[var(--color-secondary)] rounded-lg transition-colors text-sm"
+          className="flex items-center gap-2 px-3 py-1.5 bg-secondary
+                   hover:bg-primary hover:text-primary-foreground
+                   text-secondary-foreground rounded-xl transition-colors text-sm"
         >
           {isSpeaking ? (
             <>
@@ -116,10 +117,10 @@ export function ReadingResult({ question, cards }: Props) {
         </button>
       </div>
 
-      <div className="prose prose-invert max-w-none">
+      <div className="prose max-w-none">
         {reading.split('\n').map((paragraph, i) => (
           paragraph.trim() && (
-            <p key={i} className="text-[var(--color-text)] leading-relaxed mb-3">
+            <p key={i} className="text-foreground leading-relaxed mb-3">
               {paragraph}
             </p>
           )

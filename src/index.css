@@ -1,5 +1,39 @@
 @import "tailwindcss";
 
+/* 温暖学术风格 (Warm Academic) 主题配置 */
+@theme {
+  /* 主背景 - 暖米色 */
+  --color-background: #F9F9F7;
+  --color-foreground: #181818;
+
+  /* 主色调 - 陶土色 */
+  --color-primary: #CC785C;
+  --color-primary-foreground: #FFFFFF;
+
+  /* 次要色 */
+  --color-secondary: #F0EEE6;
+  --color-secondary-foreground: #181818;
+
+  /* 静音色 */
+  --color-muted: #F0EEE6;
+  --color-muted-foreground: #737373;
+
+  /* 卡片 */
+  --color-card: #FFFFFF;
+  --color-card-foreground: #181818;
+
+  /* 边框 */
+  --color-border: #E8E6DC;
+  --color-input: #E8E6DC;
+
+  /* 强调色 */
+  --color-accent: #F0EEE6;
+  --color-accent-foreground: #181818;
+
+  /* 危险色 */
+  --color-destructive: #DC2626;
+}
+
 @keyframes fade-in {
   from {
     opacity: 0;
@@ -19,20 +53,10 @@
 .delay-100 { animation-delay: 100ms; }
 .delay-200 { animation-delay: 200ms; }
 
-:root {
-  --color-primary: #6B4E9B;
-  --color-secondary: #9B7FCF;
-  --color-accent: #D4AF37;
-  --color-bg: #1A1625;
-  --color-card: #2D2640;
-  --color-text: #E8E4F0;
-  --color-muted: #8B7FA8;
-}
-
 body {
   margin: 0;
-  background: linear-gradient(135deg, var(--color-bg) 0%, #0D0B12 100%);
-  color: var(--color-text);
-  font-family: "Noto Serif SC", "Source Han Serif CN", serif;
+  background-color: var(--color-background);
+  color: var(--color-foreground);
+  font-family: "Noto Serif SC", "Source Han Serif CN", Georgia, serif;
   min-height: 100vh;
 }
