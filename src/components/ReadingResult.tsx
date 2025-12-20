@@ -84,8 +84,10 @@ export function ReadingResult({ question, cards, cachedReading, onComplete }: Pr
   }, [question, cards, cachedReading, onComplete, sendNewSentences])
 
   const handleSpeak = async () => {
+    console.log('[DEBUG][ReadingResult] handleSpeak called, isSpeaking:', isSpeaking)
     if (isSpeaking) {
       // 停止播放
+      console.log('[DEBUG][ReadingResult] 停止播放分支')
       if (ttsRef.current) {
         ttsRef.current.stop()
         ttsRef.current = null
@@ -94,6 +96,7 @@ export function ReadingResult({ question, cards, cachedReading, onComplete }: Pr
       setIsSpeaking(false)
     } else {
       // 开始播放
+      console.log('[DEBUG][ReadingResult] 开始播放分支')
       isSpeakingRef.current = true
       setIsSpeaking(true)
       sentSentencesRef.current.clear()
@@ -101,26 +104,31 @@ export function ReadingResult({ question, cards, cachedReading, onComplete }: Pr
       try {
         ttsRef.current = new StreamingTTS({
           onError: (err) => {
-            console.error('TTS error:', err)
+            console.error('[DEBUG][ReadingResult] TTS onError:', err)
           },
           onEnd: () => {
+            console.log('[DEBUG][ReadingResult] TTS onEnd 回调触发')
             isSpeakingRef.current = false
             setIsSpeaking(false)
             ttsRef.current = null
           },
         })
 
+        console.log('[DEBUG][ReadingResult] 调用 tts.start()')
         await ttsRef.current.start()
+        console.log('[DEBUG][ReadingResult] tts.start() 完成')
 
         // 发送已有的文本
+        console.log('[DEBUG][ReadingResult] 发送文本, reading长度:', reading.length, 'isStreaming:', isStreaming)
         sendNewSentences(reading)
 
         // 如果 AI 已经生成完毕，通知 TTS 结束
         if (!isStreaming) {
+          console.log('[DEBUG][ReadingResult] AI已完成，调用 tts.finish()')
           ttsRef.current.finish()
         }
       } catch (err) {
-        console.error('TTS start error:', err)
+        console.error('[DEBUG][ReadingResult] TTS start error:', err)
         isSpeakingRef.current = false
         setIsSpeaking(false)
         ttsRef.current = null
@@ -130,13 +138,13 @@ export function ReadingResult({ question, cards, cachedReading, onComplete }: Pr
 
   if (isStreaming && !reading) {
     return (
-      <div className="bg-card border border-border rounded-2xl p-6 max-w-2xl mx-auto">
-        <div className="flex items-center justify-center gap-3">
-          <div className="w-2 h-2 bg-primary rounded-full animate-bounce" />
-          <div className="w-2 h-2 bg-primary rounded-full animate-bounce delay-100" />
-          <div className="w-2 h-2 bg-primary rounded-full animate-bounce delay-200" />
+      <div className="h-full flex flex-col items-center justify-center bg-card/40 backdrop-blur-sm border border-border/30 rounded-xl p-4">
+        <div className="flex items-center gap-2">
+          <div className="w-1.5 h-1.5 bg-primary rounded-full" style={{ animation: 'bounce 1s infinite' }} />
+          <div className="w-1.5 h-1.5 bg-primary rounded-full" style={{ animation: 'bounce 1s infinite 100ms' }} />
+          <div className="w-1.5 h-1.5 bg-primary rounded-full" style={{ animation: 'bounce 1s infinite 200ms' }} />
         </div>
-        <p className="text-center text-muted-foreground mt-4">
+        <p className="text-muted-foreground/80 text-sm mt-3">
           正在为你解读牌面...
         </p>
       </div>
@@ -145,16 +153,16 @@ export function ReadingResult({ question, cards, cachedReading, onComplete }: Pr
 
   if (error) {
     return (
-      <div className="bg-card border border-border rounded-2xl p-6 max-w-2xl mx-auto">
-        <p className="text-center text-destructive">{error}</p>
+      <div className="h-full flex flex-col bg-card/40 backdrop-blur-sm border border-border/30 rounded-xl p-4">
+        <p className="text-destructive text-sm mb-3">{error}</p>
         {/* 降级显示静态解读 */}
-        <div className="mt-4 space-y-4">
+        <div className="flex-1 min-h-0 overflow-auto space-y-3">
           {cards.map((card, i) => (
-            <div key={card.id} className="border-l-2 border-primary pl-4">
-              <h4 className="text-primary font-medium font-serif">
+            <div key={card.id} className="border-l-2 border-primary/60 pl-3">
+              <h4 className="text-primary text-sm font-medium font-serif">
                 {['过去', '现在', '未来'][i]} · {card.name}
               </h4>
-              <p className="text-foreground mt-1">{card.meaning}</p>
+              <p className="text-foreground/80 text-sm mt-0.5">{card.meaning}</p>
             </div>
           ))}
         </div>
@@ -163,40 +171,40 @@ export function ReadingResult({ question, cards, cachedReading, onComplete }: Pr
   }
 
   return (
-    <div className="bg-card border border-border rounded-2xl p-6 max-w-2xl mx-auto">
-      <div className="flex items-center justify-between mb-4">
-        <h3 className="text-primary font-medium font-serif">
+    <div className="h-full flex flex-col bg-card/40 backdrop-blur-sm border border-border/30 rounded-xl p-4">
+      <div className="flex items-center justify-between mb-3 shrink-0">
+        <h3 className="text-primary text-sm font-medium font-serif">
           牌面解读
         </h3>
         <button
           onClick={handleSpeak}
           disabled={isStreaming}
-          className="flex items-center gap-2 px-3 py-1.5 bg-secondary
+          className="flex items-center gap-1.5 px-2.5 py-1 bg-secondary/60
                    hover:bg-primary hover:text-primary-foreground
-                   text-secondary-foreground rounded-xl transition-colors text-sm
-                   disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-secondary"
+                   text-secondary-foreground rounded-lg transition-all text-xs
+                   disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-secondary/60"
         >
           {isSpeaking ? (
             <>
-              <span className="w-4 h-4">⏹</span>
+              <span className="text-xs">⏹</span>
               停止
             </>
           ) : (
             <>
-              <span className="w-4 h-4">🔊</span>
-              语音播放
+              <span className="text-xs">🔊</span>
+              语音
             </>
           )}
         </button>
       </div>
 
-      <div className="prose max-w-none">
+      <div className="flex-1 min-h-0 overflow-auto pr-2">
         {reading.split('\n').map((paragraph, i, arr) => (
           paragraph.trim() && (
-            <p key={i} className="text-foreground leading-relaxed mb-3">
+            <p key={i} className="text-foreground/90 leading-relaxed text-sm mb-3">
               {paragraph}
               {isStreaming && i === arr.length - 1 && (
-                <span className="inline-block w-2 h-4 bg-primary/60 ml-0.5 animate-pulse" />
+                <span className="inline-block w-1.5 h-3.5 bg-primary/60 ml-0.5 animate-pulse" />
               )}
             </p>
           )

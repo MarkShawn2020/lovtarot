@@ -26,37 +26,45 @@ export function QuestionInput({ onSubmit }: Props) {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="max-w-xl mx-auto">
-      <div className="mb-6">
-        <label className="block text-center text-muted-foreground mb-4">
+    <form onSubmit={handleSubmit} className="w-full max-w-lg text-center mx-auto my-auto">
+      {/* 标题 */}
+      <h1 className="text-3xl md:text-4xl font-bold text-primary mb-2 font-serif">
+        心灵塔罗
+      </h1>
+      <p className="text-muted-foreground/80 mb-8 text-sm">
+        倾听内心的声音，找到属于你的指引
+      </p>
+
+      {/* 输入区 */}
+      <div className="mb-5">
+        <label className="block text-muted-foreground mb-3 text-sm">
           静下心来，想一个你想探索的问题
         </label>
         <textarea
           value={question}
           onChange={(e) => setQuestion(e.target.value)}
           placeholder={placeholder}
-          rows={3}
-          className="w-full px-4 py-3 bg-card text-card-foreground
-                     placeholder-muted-foreground rounded-xl border border-border
+          rows={2}
+          className="w-full px-4 py-3 bg-card/80 backdrop-blur-sm text-card-foreground
+                     placeholder-muted-foreground/60 rounded-xl border border-border/50
                      focus:border-primary focus:outline-none focus:ring-1
-                     focus:ring-primary resize-none transition-colors"
+                     focus:ring-primary/50 resize-none transition-all"
         />
       </div>
 
-      <div className="text-center">
-        <button
-          type="submit"
-          disabled={!question.trim()}
-          className="px-8 py-3 bg-primary hover:bg-primary/90
-                     disabled:opacity-50 disabled:cursor-not-allowed
-                     text-primary-foreground font-medium rounded-xl transition-colors duration-300"
-        >
-          开始抽牌
-        </button>
-      </div>
+      <button
+        type="submit"
+        disabled={!question.trim()}
+        className="px-8 py-2.5 bg-primary hover:bg-primary/90
+                   disabled:opacity-40 disabled:cursor-not-allowed
+                   text-primary-foreground font-medium rounded-xl transition-all duration-300
+                   shadow-lg shadow-primary/20"
+      >
+        开始抽牌
+      </button>
 
-      <p className="text-center text-muted-foreground text-sm mt-6">
-        将为你抽取三张牌，分别代表过去、现在和未来的启示
+      <p className="text-muted-foreground/60 text-xs mt-5">
+        将为你抽取三张牌 · 过去 · 现在 · 未来
       </p>
     </form>
   )
