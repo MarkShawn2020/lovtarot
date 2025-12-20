@@ -65,7 +65,7 @@ export function FlipCard({ card, position, delay, onFlipComplete }: Props) {
 
             {/* 卡片正面 */}
             <div
-              className="absolute inset-0 overflow-hidden"
+              className="absolute inset-0 overflow-hidden bg-background"
               style={{
                 backfaceVisibility: 'hidden',
                 transform: 'rotateY(180deg)',

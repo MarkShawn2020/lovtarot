@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback, type ReactNode } from 'react'
+import { domToPng } from 'modern-screenshot'
 import { playBGM, pauseBGM, isBGMPlaying, setVolume, getVolume, initBGM } from '../services/bgm'
 
 export interface MenuItem {
@@ -64,9 +65,41 @@ export function FAB({ items = [] }: Props) {
     setVolume(v)
   }, [])
 
-  // 合并菜单项：页面特定项 + 音乐控制
+  const takeScreenshot = useCallback(async () => {
+    if (!fabRef.current) return
+
+    // 临时修改样式以获取完整内容
+    const root = document.getElementById('root')
+    const container = root?.firstElementChild as HTMLElement | null
+    if (!container) return
+
+    fabRef.current.style.display = 'none'
+    const originalHeight = container.style.height
+    const originalOverflow = container.style.overflow
+    container.style.height = 'auto'
+    container.style.overflow = 'visible'
+
+    const computedBg = getComputedStyle(document.body).backgroundColor
+    const dataUrl = await domToPng(container, { scale: 2, backgroundColor: computedBg })
+
+    container.style.height = originalHeight
+    container.style.overflow = originalOverflow
+    fabRef.current.style.display = ''
+
+    const link = document.createElement('a')
+    link.download = `塔罗-${Date.now()}.png`
+    link.href = dataUrl
+    link.click()
+  }, [])
+
+  // 合并菜单项：页面特定项 + 截图 + 音乐控制
   const allItems: MenuItem[] = [
     ...items,
+    {
+      icon: '📷',
+      label: '保存截图',
+      onClick: takeScreenshot,
+    },
     {
       icon: musicPlaying ? '⏸' : '🎵',
       label: musicPlaying ? '暂停音乐' : '播放音乐',
