@@ -1,6 +1,6 @@
 import { Link, useNavigate } from 'react-router-dom'
 import { getSessions, deleteSession, type Session } from '../services/session'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 
 function formatDate(ts: number): string {
   return new Date(ts).toLocaleString('zh-CN', {
@@ -13,13 +13,18 @@ function formatDate(ts: number): string {
 
 export function HistoryPage() {
   const navigate = useNavigate()
-  const [sessions, setSessions] = useState<Session[]>(getSessions)
+  const [sessions, setSessions] = useState<Session[]>([])
 
-  const handleDelete = (id: string, e: React.MouseEvent) => {
+  useEffect(() => {
+    getSessions().then(setSessions)
+  }, [])
+
+  const handleDelete = async (id: string, e: React.MouseEvent) => {
     e.preventDefault()
     e.stopPropagation()
-    deleteSession(id)
-    setSessions(getSessions())
+    await deleteSession(id)
+    const updated = await getSessions()
+    setSessions(updated)
   }
 
   if (sessions.length === 0) {

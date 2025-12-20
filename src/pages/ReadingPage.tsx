@@ -1,13 +1,25 @@
-import { useState, useRef, useCallback } from 'react'
+import { useState, useRef, useCallback, useEffect } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { domToJpeg } from 'modern-screenshot'
-import { getSession, updateReading } from '../services/session'
+import { getSession, updateReading, type Session } from '../services/session'
 import { CardDisplay } from '../components/CardDisplay'
 import { ReadingResult } from '../components/ReadingResult'
 
 export function ReadingPage() {
   const { id } = useParams<{ id: string }>()
-  const session = id ? getSession(id) : null
+  const [session, setSession] = useState<Session | null>(null)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    if (id) {
+      getSession(id).then(s => {
+        setSession(s)
+        setLoading(false)
+      })
+    } else {
+      setLoading(false)
+    }
+  }, [id])
 
   const contentRef = useRef<HTMLDivElement>(null)
   const [retryTrigger, setRetryTrigger] = useState(0)
@@ -23,6 +35,14 @@ export function ReadingPage() {
     link.href = dataUrl
     link.click()
   }, [])
+
+  if (loading) {
+    return (
+      <div className="h-full flex items-center justify-center">
+        <p className="text-muted-foreground">加载中...</p>
+      </div>
+    )
+  }
 
   if (!session) {
     return (

@@ -1,23 +1,27 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import Masonry from 'react-masonry-css'
 import { QuestionInput } from '../components/QuestionInput'
 import { ShufflingAnimation } from '../components/ShufflingAnimation'
 import { drawCards } from '../data/tarot'
-import { createSession, getSessions } from '../services/session'
+import { createSession, getSessions, type Session } from '../services/session'
 
 export function HomePage() {
   const navigate = useNavigate()
   const [isDrawing, setIsDrawing] = useState(false)
-  const sessions = getSessions().slice(0, 5)
+  const [sessions, setSessions] = useState<Session[]>([])
 
-  const handleSubmit = (question: string) => {
+  useEffect(() => {
+    getSessions().then(all => setSessions(all.slice(0, 5)))
+  }, [])
+
+  const handleSubmit = async (question: string) => {
     setIsDrawing(true)
+    const cards = drawCards(3)
+    const session = await createSession(question, cards)
 
-    // 洗牌动画后抽牌并跳转
+    // 洗牌动画后跳转
     setTimeout(() => {
-      const cards = drawCards(3)
-      const session = createSession(question, cards)
       navigate(`/s/${session.id}`)
     }, 2500)
   }
