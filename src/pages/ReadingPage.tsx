@@ -73,21 +73,22 @@ export function ReadingPage() {
   ]
 
   return (
-    <div className="w-full h-full flex flex-col">
+    <div className="w-full min-h-full md:h-full md:overflow-hidden md:flex md:flex-col">
       {/* 标题 */}
       <h1 className="text-center text-3xl md:text-5xl font-bold text-primary font-serif
-                     leading-tight drop-shadow-sm mb-6 shrink-0">
+                     leading-tight drop-shadow-sm my-10 md:my-0 md:mb-6 md:shrink-0">
         {session.question}
       </h1>
 
-      {/* 主体：卡片 + 解读 */}
-      <div className="flex-1 min-h-0 flex gap-6">
-        <div className={`transition-all duration-300 ${showReading ? 'flex-1' : 'flex-[2]'}`}>
+      {/* 主体：窄屏纵向流式，宽屏横向flex */}
+      <div className="md:flex-1 md:min-h-0 md:flex md:flex-row md:gap-6">
+        <div className={`w-full mb-4 md:mb-0 md:w-auto transition-all duration-300
+                        ${showReading ? 'md:flex-1' : 'md:flex-[2]'}`}>
           <CardDisplay cards={session.cards} />
         </div>
 
-        <div className={`transition-all duration-300 overflow-hidden
-                        ${showReading ? 'flex-1 opacity-100' : 'w-0 opacity-0'}`}>
+        <div className={`w-full transition-all duration-300 overflow-hidden
+                        ${showReading ? 'md:flex-1 opacity-100' : 'h-0 md:w-0 opacity-0'}`}>
           <ReadingResult
             question={session.question}
             cards={session.cards}
