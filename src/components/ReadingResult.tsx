@@ -1,7 +1,7 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import type { TarotCard } from '../data/tarot'
 import { getReadingStream } from '../services/ai'
-import { speak, stopSpeaking } from '../services/tts'
+import { StreamingTTS, splitTextToSentences } from '../services/tts-streaming'
 
 interface Props {
   question: string
@@ -15,6 +15,23 @@ export function ReadingResult({ question, cards, cachedReading, onComplete }: Pr
   const [isStreaming, setIsStreaming] = useState(!cachedReading)
   const [isSpeaking, setIsSpeaking] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  const ttsRef = useRef<StreamingTTS | null>(null)
+  const sentSentencesRef = useRef<Set<string>>(new Set())
+  const isSpeakingRef = useRef(false)
+
+  // 发送新句子到 TTS
+  const sendNewSentences = useCallback((text: string) => {
+    if (!isSpeakingRef.current || !ttsRef.current) return
+
+    const sentences = splitTextToSentences(text)
+    for (const sentence of sentences) {
+      if (!sentSentencesRef.current.has(sentence)) {
+        sentSentencesRef.current.add(sentence)
+        ttsRef.current.sendText(sentence)
+      }
+    }
+  }, [])
 
   useEffect(() => {
     if (cachedReading) return
@@ -32,10 +49,16 @@ export function ReadingResult({ question, cards, cachedReading, onComplete }: Pr
           if (!cancelled) {
             fullReading += chunk
             setReading(fullReading)
+            // 如果正在播放，发送新句子
+            sendNewSentences(fullReading)
           }
         })
         if (!cancelled) {
           onComplete?.(fullReading)
+          // AI 生成完毕，通知 TTS 结束
+          if (ttsRef.current && isSpeakingRef.current) {
+            ttsRef.current.finish()
+          }
         }
       } catch (err) {
         if (!cancelled) {
@@ -53,18 +76,55 @@ export function ReadingResult({ question, cards, cachedReading, onComplete }: Pr
 
     return () => {
       cancelled = true
-      stopSpeaking()
+      if (ttsRef.current) {
+        ttsRef.current.stop()
+        ttsRef.current = null
+      }
     }
-  }, [question, cards, cachedReading, onComplete])
+  }, [question, cards, cachedReading, onComplete, sendNewSentences])
 
   const handleSpeak = async () => {
     if (isSpeaking) {
-      stopSpeaking()
+      // 停止播放
+      if (ttsRef.current) {
+        ttsRef.current.stop()
+        ttsRef.current = null
+      }
+      isSpeakingRef.current = false
       setIsSpeaking(false)
     } else {
+      // 开始播放
+      isSpeakingRef.current = true
       setIsSpeaking(true)
-      await speak(reading)
-      setIsSpeaking(false)
+      sentSentencesRef.current.clear()
+
+      try {
+        ttsRef.current = new StreamingTTS({
+          onError: (err) => {
+            console.error('TTS error:', err)
+          },
+          onEnd: () => {
+            isSpeakingRef.current = false
+            setIsSpeaking(false)
+            ttsRef.current = null
+          },
+        })
+
+        await ttsRef.current.start()
+
+        // 发送已有的文本
+        sendNewSentences(reading)
+
+        // 如果 AI 已经生成完毕，通知 TTS 结束
+        if (!isStreaming) {
+          ttsRef.current.finish()
+        }
+      } catch (err) {
+        console.error('TTS start error:', err)
+        isSpeakingRef.current = false
+        setIsSpeaking(false)
+        ttsRef.current = null
+      }
     }
   }
 
