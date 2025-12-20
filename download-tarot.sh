@@ -63,7 +63,7 @@ download_archive() {
     local metadata_url="https://archive.org/metadata/rider-waite-tarot/files"
 
     log "Fetching file list via metadata API..."
-    curl -sL "$metadata_url" | grep -oE '"name":"[^"]+\.png"' | grep -v thumb | sed 's/"name":"//;s/"//' > "$dest/filelist.txt"
+    curl -sL "$metadata_url" | grep -oE '"name":"[^"]+\.jpeg"' | grep -v thumb | sed 's/"name":"//;s/"//' > "$dest/filelist.txt"
 
     local total=$(wc -l < "$dest/filelist.txt" | tr -d ' ')
     log "Found $total PNG files to download"
