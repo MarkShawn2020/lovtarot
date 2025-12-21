@@ -165,6 +165,7 @@ export function ReadingResult({
   // 重试
   const handleRetry = useCallback(() => {
     stopTTS()
+    setAudioUrl(undefined) // 清除音频 URL（数据库记录保留）
     setReasoning('')
     setReasoningExpanded(false)
     setReading('')
@@ -238,8 +239,12 @@ export function ReadingResult({
     }
   }, [sessionId, question, cards, cachedReading, ignoreCache, onComplete, playTTS, stopTTS, retryCount])
 
-  // 注册到全局 TTS 控制
+  // 注册到全局 TTS 控制（只有当有内容可播放时才注册）
   useEffect(() => {
+    if (!reading && !audioUrl) {
+      unregisterTTS()
+      return
+    }
     registerTTS({
       play: playTTS,
       pause: pauseTTS,
@@ -250,7 +255,7 @@ export function ReadingResult({
       getVolume,
     })
     return () => unregisterTTS()
-  }, [playTTS, pauseTTS, resumeTTS, stopTTS, getTTSState, setVolume, getVolume])
+  }, [reading, audioUrl, playTTS, pauseTTS, resumeTTS, stopTTS, getTTSState, setVolume, getVolume])
 
   // 页面刷新/关闭前停止 TTS
   useEffect(() => {
