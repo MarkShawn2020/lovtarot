@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import type { TarotCard } from '../data/tarot'
 import { getReadingStream } from '../services/ai'
 import { StreamingTTS } from '../services/tts-streaming'
@@ -66,21 +66,10 @@ function TypewriterText({
   useEffect(() => {
     // 如果文本变长了（streaming），追赶显示
     if (text.length > prevTextLengthRef.current) {
-      const newChars = text.length - prevTextLengthRef.current
       prevTextLengthRef.current = text.length
 
       // 已显示的字符数如果落后，逐步追赶
       if (displayedLength < text.length) {
-        const catchUp = () => {
-          setDisplayedLength(prev => {
-            if (prev >= text.length) return prev
-            // 每次显示1-3个字符，根据落后程度加速
-            const lag = text.length - prev
-            const step = lag > 20 ? 3 : lag > 10 ? 2 : 1
-            return Math.min(prev + step, text.length)
-          })
-        }
-
         // 持续追赶直到显示完毕
         const interval = setInterval(() => {
           setDisplayedLength(prev => {
@@ -501,7 +490,7 @@ export function ReadingResult({
         <div className="flex items-center justify-between mb-3">
           <p className="text-destructive text-sm">{error}</p>
           <button
-            onClick={handleRetry}
+            onClick={() => setRetryCount(c => c + 1)}
             className="text-xs text-muted-foreground hover:text-foreground transition-colors"
           >
             重试
