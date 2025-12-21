@@ -103,6 +103,12 @@ export function ReadingResult({
     }
   }, [startTTS, stopTTS])
 
+  // 重新播报
+  const restartTTS = useCallback(() => {
+    stopTTS()
+    startTTS()
+  }, [stopTTS, startTTS])
+
   // 重试
   const handleRetry = useCallback(() => {
     stopTTS()
@@ -177,10 +183,11 @@ export function ReadingResult({
     registerTTS({
       toggle: toggleTTS,
       stop: stopTTS,
+      restart: restartTTS,
       isSpeaking: () => isSpeakingRef.current,
     })
     return () => unregisterTTS()
-  }, [toggleTTS, stopTTS])
+  }, [toggleTTS, stopTTS, restartTTS])
 
   // 页面刷新/关闭前停止 TTS
   useEffect(() => {

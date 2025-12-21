@@ -4,6 +4,7 @@
 type TTSController = {
   toggle: () => void
   stop: () => void
+  restart: () => void
   isSpeaking: () => boolean
 }
 
@@ -28,6 +29,10 @@ export function toggleTTS(): void {
 
 export function stopTTS(): void {
   currentController?.stop()
+}
+
+export function restartTTS(): void {
+  currentController?.restart()
 }
 
 export function isTTSSpeaking(): boolean {

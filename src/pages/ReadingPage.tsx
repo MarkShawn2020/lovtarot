@@ -2,6 +2,7 @@ import { useState, useRef, useCallback, useEffect } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { domToJpeg } from 'modern-screenshot'
 import { getSession, updateReading, type Session } from '../services/session'
+import { restartTTS } from '../services/tts-control'
 import { CardDisplay } from '../components/CardDisplay'
 import { ReadingResult } from '../components/ReadingResult'
 
@@ -111,6 +112,12 @@ export function ReadingPage() {
           className="px-4 py-2 text-muted-foreground hover:text-primary border border-border hover:border-primary/50 rounded-xl transition-colors"
         >
           重新解读
+        </button>
+        <button
+          onClick={restartTTS}
+          className="px-4 py-2 text-muted-foreground hover:text-primary border border-border hover:border-primary/50 rounded-xl transition-colors"
+        >
+          重新播报
         </button>
         <button
           onClick={takeScreenshot}

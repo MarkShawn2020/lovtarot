@@ -1,8 +1,12 @@
 import path from 'path'
-import { defineConfig, type Plugin } from 'vite'
+import { defineConfig, loadEnv, type Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import { LovinspPlugin } from 'lovinsp'
+
+// 加载 .env 和 .env.local 到 process.env
+const env = loadEnv('development', process.cwd(), '')
+Object.assign(process.env, env)
 
 const TTS_V3_ENDPOINT = 'https://openspeech.bytedance.com/api/v3/tts/unidirectional'
 
