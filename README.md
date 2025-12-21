@@ -1,14 +1,14 @@
 <p align="center">
-  <img src="docs/images/cover.png" alt="LovTarot Cover" width="100%">
+  <img src="docs/images/cover.png" alt="Lovtarot Cover" width="100%">
 </p>
 
 <h1 align="center">
   <img src="assets/logo.svg" width="32" height="32" alt="Logo" align="top">
-  LovTarot 塔罗
+  Lovtarot 塔罗
 </h1>
 
 <p align="center">
-  <strong>AI-powered tarot reading with voice narration</strong><br>
+  <strong>AI 驱动的塔罗牌占卜，支持语音朗读</strong><br>
   <sub>Web App</sub>
 </p>
 
