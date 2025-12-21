@@ -2,7 +2,6 @@ import { useState, useRef, useCallback, useEffect } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { domToJpeg } from 'modern-screenshot'
 import { getSession, updateReading, type Session } from '../services/session'
-import { restartTTS } from '../services/tts-control'
 import { CardDisplay } from '../components/CardDisplay'
 import { ReadingResult } from '../components/ReadingResult'
 
@@ -94,11 +93,13 @@ export function ReadingPage() {
         <div className="flex flex-col gap-6">
           <CardDisplay cards={session.cards} />
           <ReadingResult
+            sessionId={session.id}
             question={session.question}
             cards={session.cards}
             cachedReading={session.reading}
             cachedReasoning={session.reasoning}
             cachedThinkingSeconds={session.thinkingSeconds}
+            cachedAudioUrl={session.audioUrl}
             retryTrigger={retryTrigger}
             onComplete={handleReadingComplete}
           />
@@ -112,12 +113,6 @@ export function ReadingPage() {
           className="px-4 py-2 text-muted-foreground hover:text-primary border border-border hover:border-primary/50 rounded-xl transition-colors"
         >
           重新解读
-        </button>
-        <button
-          onClick={restartTTS}
-          className="px-4 py-2 text-muted-foreground hover:text-primary border border-border hover:border-primary/50 rounded-xl transition-colors"
-        >
-          重新播报
         </button>
         <button
           onClick={takeScreenshot}

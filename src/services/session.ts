@@ -8,6 +8,7 @@ export interface Session {
   reading?: string
   reasoning?: string
   thinkingSeconds?: number
+  audioUrl?: string
   createdAt: number
 }
 
@@ -18,6 +19,7 @@ interface DbSession {
   reading: string | null
   reasoning: string | null
   thinking_seconds: number | null
+  audio_url: string | null
   created_at: string
 }
 
@@ -29,6 +31,7 @@ function toSession(row: DbSession): Session {
     reading: row.reading ?? undefined,
     reasoning: row.reasoning ?? undefined,
     thinkingSeconds: row.thinking_seconds ?? undefined,
+    audioUrl: row.audio_url ?? undefined,
     createdAt: new Date(row.created_at).getTime()
   }
 }

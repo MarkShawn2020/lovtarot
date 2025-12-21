@@ -99,7 +99,7 @@ function ttsApiPlugin(): Plugin {
             if (!line.trim()) continue
             try {
               const d = JSON.parse(line)
-              console.log('[TTS] Parsed line:', { code: d.code, hasData: !!d.data, dataLen: d.data?.length })
+              console.debug('[TTS] Parsed line:', { code: d.code, hasData: !!d.data, dataLen: d.data?.length })
               if (d.data) audioChunks.push(d.data)
             } catch (e) {
               console.log('[TTS] Parse error for line:', line.substring(0, 100))

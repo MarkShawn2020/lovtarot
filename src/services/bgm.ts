@@ -80,6 +80,15 @@ export function pauseBGM(): void {
   }
 }
 
+export function stopBGM(): void {
+  if (audio) {
+    audio.pause()
+    audio.currentTime = 0
+    isPlaying = false
+    saveState({ enabled: false })
+  }
+}
+
 export function setVolume(vol: number): void {
   const v = Math.max(0, Math.min(1, vol))
   if (audio) {

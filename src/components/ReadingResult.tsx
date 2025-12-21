@@ -2,24 +2,29 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import type { TarotCard } from '../data/tarot'
 import { getReadingStream } from '../services/ai'
 import { StreamingTTS } from '../services/tts-streaming'
-import { registerTTS, unregisterTTS, notifyListeners } from '../services/tts-control'
+import { registerTTS, unregisterTTS, notifyListeners, type TTSState } from '../services/tts-control'
+import { generateAndCacheAudio } from '../services/tts-cache'
 
 interface Props {
+  sessionId: string
   question: string
   cards: TarotCard[]
   cachedReading?: string
   cachedReasoning?: string
   cachedThinkingSeconds?: number
+  cachedAudioUrl?: string
   retryTrigger?: number
   onComplete?: (reading: string, reasoning: string, thinkingSeconds: number) => void
 }
 
 export function ReadingResult({
+  sessionId,
   question,
   cards,
   cachedReading,
   cachedReasoning,
   cachedThinkingSeconds,
+  cachedAudioUrl,
   retryTrigger,
   onComplete,
 }: Props) {
@@ -31,9 +36,12 @@ export function ReadingResult({
   const [retryCount, setRetryCount] = useState(0)
   const [ignoreCache, setIgnoreCache] = useState(false)
   const [thinkingSeconds, setThinkingSeconds] = useState(cachedThinkingSeconds || 0)
+  const [audioUrl, setAudioUrl] = useState<string | undefined>(cachedAudioUrl)
 
   const ttsRef = useRef<StreamingTTS | null>(null)
-  const isSpeakingRef = useRef(false)
+  const audioRef = useRef<HTMLAudioElement | null>(null)
+  const ttsStateRef = useRef<TTSState>('idle')
+  const volumeRef = useRef(1)
   const readingRef = useRef(reading)
   const thinkingSecondsRef = useRef(thinkingSeconds)
 
@@ -54,33 +62,75 @@ export function ReadingResult({
     }
   }, [isStreaming, reading])
 
-  // 开始 TTS（全文播报）
-  const startTTS = useCallback(async (text?: string) => {
-    if (ttsRef.current) return
+  // 播放 TTS（优先使用缓存音频）
+  const playTTS = useCallback(async (text?: string, url?: string) => {
+    if (ttsStateRef.current !== 'idle') return
 
+    const cachedUrl = url || audioUrl
     const content = text || readingRef.current
-    if (!content) return
+    if (!content && !cachedUrl) return
 
+    // 优先使用缓存的音频 URL
+    if (cachedUrl) {
+      console.log('[TTS] Playing cached audio:', cachedUrl)
+      const audio = new Audio(cachedUrl)
+      audio.volume = volumeRef.current
+      audioRef.current = audio
+      audio.onended = () => {
+        ttsStateRef.current = 'idle'
+        audioRef.current = null
+        notifyListeners()
+      }
+      audio.onerror = () => {
+        ttsStateRef.current = 'idle'
+        audioRef.current = null
+        notifyListeners()
+      }
+      ttsStateRef.current = 'playing'
+      notifyListeners()
+      audio.play().catch(console.error)
+      return
+    }
+
+    // 没有缓存，使用实时 TTS
     try {
       ttsRef.current = new StreamingTTS({
         onError: (err) => console.error('[TTS] Error:', err),
         onEnd: () => {
-          isSpeakingRef.current = false
+          ttsStateRef.current = 'idle'
           ttsRef.current = null
           notifyListeners()
         },
       })
 
       await ttsRef.current.start()
-      isSpeakingRef.current = true
+      ttsStateRef.current = 'playing'
       notifyListeners()
 
       // 一次性发送全文
-      ttsRef.current.sendText(content)
+      ttsRef.current.sendText(content!)
       ttsRef.current.finish()
     } catch (err) {
       console.error('[TTS] Start error:', err)
       ttsRef.current = null
+    }
+  }, [audioUrl])
+
+  // 暂停 TTS（仅缓存音频支持）
+  const pauseTTS = useCallback(() => {
+    if (audioRef.current && ttsStateRef.current === 'playing') {
+      audioRef.current.pause()
+      ttsStateRef.current = 'paused'
+      notifyListeners()
+    }
+  }, [])
+
+  // 继续 TTS
+  const resumeTTS = useCallback(() => {
+    if (audioRef.current && ttsStateRef.current === 'paused') {
+      audioRef.current.play().catch(console.error)
+      ttsStateRef.current = 'playing'
+      notifyListeners()
     }
   }, [])
 
@@ -90,24 +140,27 @@ export function ReadingResult({
       ttsRef.current.stop()
       ttsRef.current = null
     }
-    isSpeakingRef.current = false
+    if (audioRef.current) {
+      audioRef.current.pause()
+      audioRef.current.src = ''
+      audioRef.current = null
+    }
+    ttsStateRef.current = 'idle'
     notifyListeners()
   }, [])
 
-  // 切换 TTS
-  const toggleTTS = useCallback(() => {
-    if (isSpeakingRef.current) {
-      stopTTS()
-    } else {
-      startTTS()
-    }
-  }, [startTTS, stopTTS])
+  // 获取 TTS 状态
+  const getTTSState = useCallback((): TTSState => ttsStateRef.current, [])
 
-  // 重新播报
-  const restartTTS = useCallback(() => {
-    stopTTS()
-    startTTS()
-  }, [stopTTS, startTTS])
+  // 音量控制
+  const setVolume = useCallback((v: number) => {
+    volumeRef.current = v
+    if (audioRef.current) {
+      audioRef.current.volume = v
+    }
+  }, [])
+
+  const getVolume = useCallback(() => volumeRef.current, [])
 
   // 重试
   const handleRetry = useCallback(() => {
@@ -155,8 +208,15 @@ export function ReadingResult({
 
         if (!cancelled) {
           onComplete?.(fullReading, fullReasoning, thinkingSecondsRef.current)
-          // 生成完成后自动播报全文
-          startTTS(fullReading)
+          // 生成完成后自动播报全文（实时 TTS）
+          playTTS(fullReading)
+          // 后台生成并缓存音频（下次播放使用）
+          generateAndCacheAudio(sessionId, fullReading).then(url => {
+            if (url && !cancelled) {
+              setAudioUrl(url)
+              console.log('[TTS] Audio cached for future playback')
+            }
+          })
         }
       } catch (err) {
         if (!cancelled) {
@@ -176,18 +236,21 @@ export function ReadingResult({
       cancelled = true
       stopTTS()
     }
-  }, [question, cards, cachedReading, ignoreCache, onComplete, startTTS, stopTTS, retryCount])
+  }, [sessionId, question, cards, cachedReading, ignoreCache, onComplete, playTTS, stopTTS, retryCount])
 
   // 注册到全局 TTS 控制
   useEffect(() => {
     registerTTS({
-      toggle: toggleTTS,
+      play: playTTS,
+      pause: pauseTTS,
+      resume: resumeTTS,
       stop: stopTTS,
-      restart: restartTTS,
-      isSpeaking: () => isSpeakingRef.current,
+      getState: getTTSState,
+      setVolume,
+      getVolume,
     })
     return () => unregisterTTS()
-  }, [toggleTTS, stopTTS, restartTTS])
+  }, [playTTS, pauseTTS, resumeTTS, stopTTS, getTTSState, setVolume, getVolume])
 
   // 页面刷新/关闭前停止 TTS
   useEffect(() => {

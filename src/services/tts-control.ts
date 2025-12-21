@@ -1,16 +1,22 @@
 // 全局 TTS 控制服务
 // 用于在 MusicControl 中统一控制语音播放
 
+export type TTSState = 'idle' | 'playing' | 'paused'
+
 type TTSController = {
-  toggle: () => void
+  play: () => void
+  pause: () => void
+  resume: () => void
   stop: () => void
-  restart: () => void
-  isSpeaking: () => boolean
+  getState: () => TTSState
+  setVolume: (v: number) => void
+  getVolume: () => number
 }
 
-type Listener = (speaking: boolean) => void
+type Listener = (state: TTSState) => void
 
 let currentController: TTSController | null = null
+let globalVolume = 1
 const listeners = new Set<Listener>()
 
 export function registerTTS(controller: TTSController): void {
@@ -23,20 +29,33 @@ export function unregisterTTS(): void {
   notifyListeners()
 }
 
-export function toggleTTS(): void {
-  currentController?.toggle()
+export function playTTS(): void {
+  currentController?.play()
+}
+
+export function pauseTTS(): void {
+  currentController?.pause()
+}
+
+export function resumeTTS(): void {
+  currentController?.resume()
 }
 
 export function stopTTS(): void {
   currentController?.stop()
 }
 
-export function restartTTS(): void {
-  currentController?.restart()
+export function getTTSState(): TTSState {
+  return currentController?.getState() ?? 'idle'
 }
 
-export function isTTSSpeaking(): boolean {
-  return currentController?.isSpeaking() ?? false
+export function setTTSVolume(v: number): void {
+  globalVolume = v
+  currentController?.setVolume(v)
+}
+
+export function getTTSVolume(): number {
+  return currentController?.getVolume() ?? globalVolume
 }
 
 export function hasTTS(): boolean {
@@ -49,6 +68,6 @@ export function subscribeTTS(listener: Listener): () => void {
 }
 
 export function notifyListeners(): void {
-  const speaking = isTTSSpeaking()
-  listeners.forEach(fn => fn(speaking))
+  const state = getTTSState()
+  listeners.forEach(fn => fn(state))
 }
