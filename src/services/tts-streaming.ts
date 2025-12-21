@@ -180,6 +180,18 @@ export class StreamingTTS {
     this.isPlaying = false
   }
 
+  pause(): void {
+    if (this.currentAudio && this.isPlaying) {
+      this.currentAudio.pause()
+    }
+  }
+
+  resume(): void {
+    if (this.currentAudio && !this.isStopped) {
+      this.currentAudio.play().catch(console.error)
+    }
+  }
+
   get isSpeaking(): boolean {
     return this.isPlaying || this.audioQueue.length > 0
   }

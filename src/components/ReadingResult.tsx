@@ -1,9 +1,117 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import type { TarotCard } from '../data/tarot'
 import { getReadingStream } from '../services/ai'
 import { StreamingTTS } from '../services/tts-streaming'
 import { registerTTS, unregisterTTS, notifyListeners, type TTSState } from '../services/tts-control'
 import { generateAndCacheAudio } from '../services/tts-cache'
+
+// 水晶球蓄力动画组件
+function CrystalBallLoader({ phase, thinkingSeconds }: { phase: StreamingPhase; thinkingSeconds: number }) {
+  const isThinking = phase === 'requesting' || phase === 'thinking'
+
+  return (
+    <div className="flex flex-col items-center justify-center py-8">
+      {/* 水晶球容器 */}
+      <div className="relative w-24 h-24">
+        {/* 外层光晕 - 慢速脉动 */}
+        <div className="absolute inset-0 rounded-full bg-primary/20 animate-crystal-glow" />
+
+        {/* 中层光环 - 旋转 */}
+        <div className="absolute inset-2 rounded-full border-2 border-primary/30 animate-crystal-spin" />
+
+        {/* 内核 - 渐变脉动 */}
+        <div className="absolute inset-4 rounded-full bg-gradient-to-br from-primary/40 via-primary/60 to-primary/40 animate-crystal-pulse shadow-lg shadow-primary/30" />
+
+        {/* 中心光点 */}
+        <div className="absolute inset-8 rounded-full bg-primary/80 animate-crystal-core" />
+
+        {/* 微粒效果 */}
+        {isThinking && (
+          <>
+            <div className="absolute top-1/2 left-1/2 w-1 h-1 bg-primary/60 rounded-full animate-particle-1" />
+            <div className="absolute top-1/2 left-1/2 w-1.5 h-1.5 bg-primary/50 rounded-full animate-particle-2" />
+            <div className="absolute top-1/2 left-1/2 w-1 h-1 bg-primary/70 rounded-full animate-particle-3" />
+          </>
+        )}
+      </div>
+
+      {/* 状态文字 */}
+      <div className="mt-6 text-center">
+        <p className="text-primary/80 text-sm font-serif animate-fade-pulse">
+          {phase === 'requesting' ? '正在连接塔罗灵感...' : '命运之轮正在旋转...'}
+        </p>
+        {thinkingSeconds > 0 && (
+          <p className="text-muted-foreground/60 text-xs mt-1 tabular-nums">
+            {thinkingSeconds}s
+          </p>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// 打字机文字组件
+function TypewriterText({
+  text,
+  isStreaming,
+  className
+}: {
+  text: string
+  isStreaming: boolean
+  className?: string
+}) {
+  const [displayedLength, setDisplayedLength] = useState(0)
+  const prevTextLengthRef = useRef(0)
+
+  useEffect(() => {
+    // 如果文本变长了（streaming），追赶显示
+    if (text.length > prevTextLengthRef.current) {
+      const newChars = text.length - prevTextLengthRef.current
+      prevTextLengthRef.current = text.length
+
+      // 已显示的字符数如果落后，逐步追赶
+      if (displayedLength < text.length) {
+        const catchUp = () => {
+          setDisplayedLength(prev => {
+            if (prev >= text.length) return prev
+            // 每次显示1-3个字符，根据落后程度加速
+            const lag = text.length - prev
+            const step = lag > 20 ? 3 : lag > 10 ? 2 : 1
+            return Math.min(prev + step, text.length)
+          })
+        }
+
+        // 持续追赶直到显示完毕
+        const interval = setInterval(() => {
+          setDisplayedLength(prev => {
+            if (prev >= text.length) {
+              clearInterval(interval)
+              return prev
+            }
+            const lag = text.length - prev
+            const step = lag > 20 ? 3 : lag > 10 ? 2 : 1
+            return Math.min(prev + step, text.length)
+          })
+        }, 30) // 约 30-100 字/秒
+
+        return () => clearInterval(interval)
+      }
+    }
+  }, [text, displayedLength])
+
+  // 如果不是 streaming 模式，直接显示全部
+  const displayText = isStreaming ? text.slice(0, displayedLength) : text
+  const showCursor = isStreaming && displayedLength < text.length
+
+  return (
+    <span className={className}>
+      {displayText}
+      {showCursor && (
+        <span className="inline-block w-0.5 h-[1em] bg-primary/60 ml-0.5 animate-cursor-blink align-text-bottom" />
+      )}
+    </span>
+  )
+}
 
 export type StreamingPhase =
   | 'idle'           // 空闲
@@ -64,6 +172,7 @@ export function ReadingResult({
   const volumeRef = useRef(1)
   const readingRef = useRef(reading)
   const thinkingSecondsRef = useRef(thinkingSeconds)
+  const audioUrlRef = useRef(audioUrl)
   const prevPhaseRef = useRef<StreamingPhase | null>(null)
   const onPhaseChangeRef = useRef(onPhaseChange)
   const prevResultRef = useRef<PrevResult | null>(null)
@@ -81,6 +190,12 @@ export function ReadingResult({
   useEffect(() => {
     thinkingSecondsRef.current = thinkingSeconds
   }, [thinkingSeconds])
+
+  // 同时更新 audioUrl state 和 ref（避免 timing 问题）
+  const updateAudioUrl = useCallback((url: string | undefined) => {
+    setAudioUrl(url)
+    audioUrlRef.current = url
+  }, [])
 
   // 通知父组件 phase 变化（仅在真正变化时，使用 ref 避免依赖 callback）
   useEffect(() => {
@@ -101,10 +216,13 @@ export function ReadingResult({
 
   // 播放 TTS（优先使用缓存音频）
   const playTTS = useCallback(async (text?: string, url?: string) => {
+    console.log('[TTS] playTTS called, audioUrlRef.current:', audioUrlRef.current, 'url param:', url)
     if (ttsStateRef.current !== 'idle') return
 
-    const cachedUrl = url || audioUrl
+    // 使用 ref 确保获取最新的 audioUrl
+    const cachedUrl = url || audioUrlRef.current
     const content = text || readingRef.current
+    console.log('[TTS] cachedUrl:', cachedUrl, 'content length:', content?.length)
     if (!content && !cachedUrl) return
 
     // 优先使用缓存的音频 URL
@@ -151,24 +269,34 @@ export function ReadingResult({
       console.error('[TTS] Start error:', err)
       ttsRef.current = null
     }
-  }, [audioUrl])
+  }, [])
 
-  // 暂停 TTS（仅缓存音频支持）
+  // 暂停 TTS（支持缓存音频和实时 TTS）
   const pauseTTS = useCallback(() => {
-    if (audioRef.current && ttsStateRef.current === 'playing') {
+    if (ttsStateRef.current !== 'playing') return
+
+    if (audioRef.current) {
       audioRef.current.pause()
-      ttsStateRef.current = 'paused'
-      notifyListeners()
     }
+    if (ttsRef.current) {
+      ttsRef.current.pause()
+    }
+    ttsStateRef.current = 'paused'
+    notifyListeners()
   }, [])
 
   // 继续 TTS
   const resumeTTS = useCallback(() => {
-    if (audioRef.current && ttsStateRef.current === 'paused') {
+    if (ttsStateRef.current !== 'paused') return
+
+    if (audioRef.current) {
       audioRef.current.play().catch(console.error)
-      ttsStateRef.current = 'playing'
-      notifyListeners()
     }
+    if (ttsRef.current) {
+      ttsRef.current.resume()
+    }
+    ttsStateRef.current = 'playing'
+    notifyListeners()
   }, [])
 
   // 停止 TTS
@@ -217,7 +345,7 @@ export function ReadingResult({
         prevResultRef.current = { reading: r, reasoning: rs, thinkingSeconds: ts, audioUrl: au }
       }
       stopTTS()
-      setAudioUrl(undefined)
+      updateAudioUrl(undefined)
       setReasoning('')
       setReasoningExpanded(false)
       setReading('')
@@ -225,7 +353,7 @@ export function ReadingResult({
       setIgnoreCache(true)
       setRetryCount(c => c + 1)
     }
-  }, [retryTrigger, stopTTS])
+  }, [retryTrigger, stopTTS, updateAudioUrl])
 
   // 外部触发停止
   const stopTriggerRef = useRef(0)
@@ -243,12 +371,12 @@ export function ReadingResult({
         setReading(prevResultRef.current.reading)
         setReasoning(prevResultRef.current.reasoning)
         setThinkingSeconds(prevResultRef.current.thinkingSeconds)
-        setAudioUrl(prevResultRef.current.audioUrl)
+        updateAudioUrl(prevResultRef.current.audioUrl)
       }
       setPhase('idle')
       setIgnoreCache(false)
     }
-  }, [stopTrigger, stopTTS])
+  }, [stopTrigger, stopTTS, updateAudioUrl])
 
   // 保持 onComplete ref 最新
   const onCompleteRef = useRef(onComplete)
@@ -316,7 +444,7 @@ export function ReadingResult({
           // 等待音频生成完成
           const url = await audioPromise
           if (url && !cancelled && !abortController.signal.aborted) {
-            setAudioUrl(url)
+            updateAudioUrl(url)
             console.log('[Reading] 音频缓存完成')
           }
 
@@ -341,7 +469,7 @@ export function ReadingResult({
       abortController.abort()
       stopTTS()
     }
-  }, [sessionId, question, cards, cachedReading, ignoreCache, playTTS, stopTTS, retryCount])
+  }, [sessionId, question, cards, cachedReading, ignoreCache, playTTS, stopTTS, updateAudioUrl, retryCount])
 
   // 注册到全局 TTS 控制（只有当有内容可播放时才注册）
   useEffect(() => {
@@ -393,33 +521,40 @@ export function ReadingResult({
     )
   }
 
+  const isLoadingPhase = phase === 'requesting' || phase === 'thinking'
+  const isStreamingPhase = phase === 'reading'
+
   return (
     <div className="h-full flex flex-col bg-card/40 backdrop-blur-sm border border-border/30 rounded-xl p-4">
-      <div className="flex items-center justify-between mb-3 shrink-0">
-        <h3 className="text-primary text-sm font-medium font-serif">
-          牌面解读
-        </h3>
-        <div className="flex items-center gap-3">
-          {(phase === 'requesting' || phase === 'thinking' || reasoning) && (
-            <button
-              onClick={() => setReasoningExpanded(e => !e)}
-              disabled={phase === 'requesting'}
-              className="flex items-center gap-1.5 text-xs text-muted-foreground/70 hover:text-muted-foreground transition-colors disabled:cursor-default"
-            >
-              {(phase === 'requesting' || phase === 'thinking') && (
-                <span className="w-1.5 h-1.5 bg-primary rounded-full animate-pulse" />
-              )}
-              <span>
-                {phase === 'requesting' ? '正在请求' : '思考过程'}
-                {thinkingSeconds > 0 && <span className="tabular-nums">（{thinkingSeconds}s）</span>}
-              </span>
-              {phase !== 'requesting' && <span className="text-[10px]">{reasoningExpanded ? '▲' : '▼'}</span>}
-            </button>
-          )}
+      {/* 顶部标题栏 - 仅在有内容或有思考过程时显示 */}
+      {(reading || reasoning || !isLoadingPhase) && (
+        <div className="flex items-center justify-between mb-3 shrink-0">
+          <h3 className="text-primary text-sm font-medium font-serif">
+            牌面解读
+          </h3>
+          <div className="flex items-center gap-3">
+            {reasoning && (
+              <button
+                onClick={() => setReasoningExpanded(e => !e)}
+                className="flex items-center gap-1.5 text-xs text-muted-foreground/70 hover:text-muted-foreground transition-colors"
+              >
+                <span>
+                  思考过程
+                  {thinkingSeconds > 0 && <span className="tabular-nums">（{thinkingSeconds}s）</span>}
+                </span>
+                <span className="text-[10px]">{reasoningExpanded ? '▲' : '▼'}</span>
+              </button>
+            )}
+          </div>
         </div>
-      </div>
+      )}
 
       <div className="flex-1 min-h-0 overflow-auto pr-2">
+        {/* 水晶球蓄力动画 - 在 requesting/thinking 阶段显示 */}
+        {isLoadingPhase && !reading && (
+          <CrystalBallLoader phase={phase} thinkingSeconds={thinkingSeconds} />
+        )}
+
         {/* 思考过程 */}
         {reasoning && reasoningExpanded && (
           <div className="mb-3 pb-3 border-b border-border/30">
@@ -429,13 +564,18 @@ export function ReadingResult({
           </div>
         )}
 
-        {/* 牌面解读内容 */}
+        {/* 牌面解读内容 - 带打字机效果 */}
         {reading && reading.split('\n').map((paragraph, i, arr) => (
           paragraph.trim() && (
             <p key={i} className="text-foreground/90 leading-relaxed text-sm mb-3">
-              {paragraph}
-              {phase === 'reading' && i === arr.length - 1 && (
-                <span className="inline-block w-1.5 h-3.5 bg-primary/60 ml-0.5 animate-pulse" />
+              {isStreamingPhase && i === arr.length - 1 ? (
+                <TypewriterText
+                  text={paragraph}
+                  isStreaming={true}
+                  className=""
+                />
+              ) : (
+                paragraph
               )}
             </p>
           )
