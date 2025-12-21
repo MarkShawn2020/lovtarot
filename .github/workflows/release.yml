@@ -34,6 +34,9 @@ jobs:
         id: tag
         run: echo "tag=${{ github.event.inputs.tag || github.ref_name }}" >> $GITHUB_OUTPUT
 
+      - name: Package dist
+        run: zip -r "lovtarot-${{ steps.tag.outputs.tag }}.zip" dist
+
       - name: Extract release notes
         id: notes
         run: |
@@ -54,3 +57,4 @@ jobs:
         with:
           tag_name: ${{ steps.tag.outputs.tag }}
           body: ${{ steps.notes.outputs.notes }}
+          files: lovtarot-${{ steps.tag.outputs.tag }}.zip
