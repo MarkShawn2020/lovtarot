@@ -3,13 +3,14 @@ import { useParams, Link } from 'react-router-dom'
 import { domToJpeg } from 'modern-screenshot'
 import { getSession, updateReading, type Session } from '../services/session'
 import { CardDisplay } from '../components/CardDisplay'
-import { ReadingResult } from '../components/ReadingResult'
+import { ReadingResult, type StreamingPhase } from '../components/ReadingResult'
 
 export function ReadingPage() {
   const { id } = useParams<{ id: string }>()
   const [session, setSession] = useState<Session | null>(null)
   const [loading, setLoading] = useState(true)
-  const [isStreaming, setIsStreaming] = useState(false)
+  const [phase, setPhase] = useState<StreamingPhase>('idle')
+  const [stopTrigger, setStopTrigger] = useState(0)
 
   useEffect(() => {
     if (id) {
@@ -37,6 +38,12 @@ export function ReadingPage() {
     link.click()
   }, [])
 
+  const handleReadingComplete = useCallback((reading: string, reasoning: string, thinkingSeconds: number) => {
+    if (session) {
+      updateReading(session.id, reading, reasoning, thinkingSeconds)
+    }
+  }, [session])
+
   if (loading) {
     return (
       <div className="h-full flex items-center justify-center">
@@ -59,10 +66,6 @@ export function ReadingPage() {
         </div>
       </div>
     )
-  }
-
-  const handleReadingComplete = (reading: string, reasoning: string, thinkingSeconds: number) => {
-    updateReading(session.id, reading, reasoning, thinkingSeconds)
   }
 
   return (
@@ -102,29 +105,30 @@ export function ReadingPage() {
             cachedThinkingSeconds={session.thinkingSeconds}
             cachedAudioUrl={session.audioUrl}
             retryTrigger={retryTrigger}
+            stopTrigger={stopTrigger}
             onComplete={handleReadingComplete}
-            onStreamingChange={setIsStreaming}
+            onPhaseChange={setPhase}
           />
         </div>
       </div>
 
       {/* 底部工具栏 */}
       <div className="mt-8 flex items-center justify-center gap-3 text-sm">
-        <button
-          onClick={() => setRetryTrigger(n => n + 1)}
-          disabled={isStreaming}
-          className="px-4 py-2 border rounded-xl transition-colors disabled:cursor-not-allowed text-muted-foreground hover:text-primary border-border hover:border-primary/50 disabled:text-primary/70 disabled:border-primary/30 disabled:hover:text-primary/70 disabled:hover:border-primary/30"
-        >
-          {isStreaming ? (
-            <span className="flex items-center gap-2">
-              <span className="relative flex items-center justify-center w-4 h-4">
-                <span className="absolute w-2 h-2 bg-primary/80 rounded-full" />
-                <span className="absolute w-4 h-4 bg-primary/40 rounded-full animate-ping" />
-              </span>
-              正在解读
-            </span>
-          ) : '重新解读'}
-        </button>
+        {phase !== 'idle' ? (
+          <button
+            onClick={() => setStopTrigger(n => n + 1)}
+            className="px-4 py-2 border rounded-xl transition-colors text-destructive/70 border-destructive/30 hover:text-destructive hover:border-destructive/50"
+          >
+            中断解读
+          </button>
+        ) : (
+          <button
+            onClick={() => setRetryTrigger(n => n + 1)}
+            className="px-4 py-2 border rounded-xl transition-colors text-muted-foreground hover:text-primary border-border hover:border-primary/50"
+          >
+            重新解读
+          </button>
+        )}
         <button
           onClick={takeScreenshot}
           className="px-4 py-2 bg-primary text-primary-foreground hover:bg-primary/90 rounded-xl transition-colors"
