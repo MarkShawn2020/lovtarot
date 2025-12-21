@@ -3,10 +3,13 @@ import { defineConfig, loadEnv, type Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import { LovinspPlugin } from 'lovinsp'
+import { createConsola } from 'consola'
 
 // 加载 .env 和 .env.local 到 process.env
 const env = loadEnv('development', process.cwd(), '')
 Object.assign(process.env, env)
+
+const log = createConsola({ level: 4 }).withTag('TTS')
 
 const TTS_V3_ENDPOINT = 'https://openspeech.bytedance.com/api/v3/tts/unidirectional'
 
@@ -54,7 +57,7 @@ function ttsApiPlugin(): Plugin {
           const voiceType = (data.voiceType || process.env.VITE_DOUBAO_TTS_VOICE_TYPE || 'zh_female_shuangkuaisisi_moon_bigtts').trim()
           // 根据音色自动判断资源 ID：bigtts = 2.0, 其他 = 1.0
           const resourceId = voiceType.includes('bigtts') ? 'seed-tts-2.0' : 'seed-tts-1.0'
-          console.log('[TTS] Request:', { voiceType, resourceId, textLen: data.text?.length })
+          log.info('Request:', { voiceType, resourceId, textLen: data.text?.length })
 
           const ttsBody = {
             user: { uid: 'dev_' + Date.now() },
@@ -81,7 +84,7 @@ function ttsApiPlugin(): Plugin {
 
           if (!response.ok) {
             const errorText = await response.text()
-            console.error('[TTS] Upstream error:', response.status, errorText)
+            log.error('Upstream error:', response.status, errorText)
             res.writeHead(502, { 'Content-Type': 'application/json' })
             res.end(JSON.stringify({ error: 'TTS error', details: errorText }))
             return
@@ -89,8 +92,7 @@ function ttsApiPlugin(): Plugin {
 
           // 读取完整响应体（V3 是流式的，每行一个 JSON）
           const fullText = await response.text()
-          console.log('[TTS] Raw response length:', fullText.length)
-          console.log('[TTS] Raw response preview:', fullText.substring(0, 500))
+          log.debug('Raw response length:', fullText.length)
 
           const audioChunks: string[] = []
           const lines = fullText.split('\n')
@@ -99,14 +101,14 @@ function ttsApiPlugin(): Plugin {
             if (!line.trim()) continue
             try {
               const d = JSON.parse(line)
-              console.debug('[TTS] Parsed line:', { code: d.code, hasData: !!d.data, dataLen: d.data?.length })
+              log.trace('Parsed chunk:', { code: d.code, hasData: !!d.data, dataLen: d.data?.length })
               if (d.data) audioChunks.push(d.data)
             } catch (e) {
-              console.log('[TTS] Parse error for line:', line.substring(0, 100))
+              log.warn('Parse error for line:', line.substring(0, 100))
             }
           }
 
-          console.log('[TTS] Total audio chunks:', audioChunks.length)
+          log.debug('Total audio chunks:', audioChunks.length)
 
           if (audioChunks.length === 0) {
             res.writeHead(200, { 'Content-Type': 'application/json' })
@@ -115,7 +117,7 @@ function ttsApiPlugin(): Plugin {
           }
 
           const combined = Buffer.concat(audioChunks.map((c) => Buffer.from(c, 'base64')))
-          console.log('[TTS] Combined audio size:', combined.length)
+          log.success('Audio synthesized:', combined.length, 'bytes')
           res.writeHead(200, { 'Content-Type': 'application/json' })
           res.end(JSON.stringify({ audio: combined.toString('base64') }))
         } catch (e) {

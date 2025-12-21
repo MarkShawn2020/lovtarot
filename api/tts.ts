@@ -3,6 +3,9 @@
 // 参考文档: https://www.volcengine.com/docs/6561/1598757
 
 import type { VercelRequest, VercelResponse } from '@vercel/node'
+import { createConsola } from 'consola'
+
+const log = createConsola({ level: 4 }).withTag('TTS')
 
 export const config = {
   maxDuration: 60,
@@ -61,7 +64,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     } else {
       resourceId = 'seed-tts-1.0'
     }
-    console.log('[TTS V3] voiceType:', voiceType, 'resourceId:', resourceId)
+    log.info('voiceType:', voiceType, 'resourceId:', resourceId)
 
     // V3 API 请求体格式
     const ttsBody = {
@@ -93,12 +96,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     // 读取完整响应用于调试
     const responseText = await response.text()
-    console.log('[TTS V3] Response status:', response.status)
-    console.log('[TTS V3] Response headers:', JSON.stringify(Object.fromEntries(response.headers.entries())))
-    console.log('[TTS V3] Response body (first 500 chars):', responseText.substring(0, 500))
+    log.debug('Response status:', response.status, 'length:', responseText.length)
 
     if (!response.ok) {
-      console.error('[TTS V3] HTTP error:', response.status, responseText)
+      log.error('HTTP error:', response.status, responseText.substring(0, 200))
       return res.status(502).json({ error: 'TTS service error', details: responseText })
     }
 
@@ -118,7 +119,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           sentence?: object
         }
 
-        console.log('[TTS V3] Parsed line - code:', data.code, 'hasData:', !!data.data, 'message:', data.message)
+        log.trace('Chunk:', { code: data.code, hasData: !!data.data })
 
         // code: 0 表示正常数据
         // code: 20000000 表示成功结束
@@ -127,7 +128,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           // 合成结束
           continue
         } else if (data.code !== 0) {
-          console.error('[TTS V3] Error:', data.code, data.message)
+          log.error('TTS error:', data.code, data.message)
           return res.status(400).json({
             error: data.message || 'TTS synthesis failed',
             code: data.code
@@ -139,11 +140,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           audioChunks.push(Buffer.from(data.data, 'base64'))
         }
       } catch (parseErr) {
-        console.warn('[TTS V3] JSON parse warning:', parseErr, 'line:', trimmed.substring(0, 100))
+        log.warn('JSON parse error:', trimmed.substring(0, 100))
       }
     }
 
-    console.log('[TTS V3] Total audio chunks:', audioChunks.length)
+    log.debug('Total chunks:', audioChunks.length)
 
     if (audioChunks.length === 0) {
       return res.status(502).json({ error: 'No audio data received', rawResponse: responseText.substring(0, 1000) })
@@ -153,9 +154,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const combinedAudio = Buffer.concat(audioChunks)
 
     // 返回 base64 编码的音频
+    log.success('Audio synthesized:', combinedAudio.length, 'bytes')
     return res.status(200).json({ audio: combinedAudio.toString('base64') })
   } catch (e) {
-    console.error('[TTS V3] Error:', e)
+    log.error('Internal error:', e)
     return res.status(500).json({ error: 'Internal error', details: String(e) })
   }
 }

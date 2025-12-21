@@ -15,6 +15,7 @@ interface Props {
   cachedAudioUrl?: string
   retryTrigger?: number
   onComplete?: (reading: string, reasoning: string, thinkingSeconds: number) => void
+  onStreamingChange?: (streaming: boolean) => void
 }
 
 export function ReadingResult({
@@ -27,6 +28,7 @@ export function ReadingResult({
   cachedAudioUrl,
   retryTrigger,
   onComplete,
+  onStreamingChange,
 }: Props) {
   const [reasoning, setReasoning] = useState(cachedReasoning || '')
   const [reasoningExpanded, setReasoningExpanded] = useState(false)
@@ -52,6 +54,11 @@ export function ReadingResult({
   useEffect(() => {
     thinkingSecondsRef.current = thinkingSeconds
   }, [thinkingSeconds])
+
+  // 通知父组件 streaming 状态变化
+  useEffect(() => {
+    onStreamingChange?.(isStreaming)
+  }, [isStreaming, onStreamingChange])
 
   // 思考计时器
   useEffect(() => {

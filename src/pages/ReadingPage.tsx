@@ -9,6 +9,7 @@ export function ReadingPage() {
   const { id } = useParams<{ id: string }>()
   const [session, setSession] = useState<Session | null>(null)
   const [loading, setLoading] = useState(true)
+  const [isStreaming, setIsStreaming] = useState(false)
 
   useEffect(() => {
     if (id) {
@@ -102,6 +103,7 @@ export function ReadingPage() {
             cachedAudioUrl={session.audioUrl}
             retryTrigger={retryTrigger}
             onComplete={handleReadingComplete}
+            onStreamingChange={setIsStreaming}
           />
         </div>
       </div>
@@ -110,9 +112,18 @@ export function ReadingPage() {
       <div className="mt-8 flex items-center justify-center gap-3 text-sm">
         <button
           onClick={() => setRetryTrigger(n => n + 1)}
-          className="px-4 py-2 text-muted-foreground hover:text-primary border border-border hover:border-primary/50 rounded-xl transition-colors"
+          disabled={isStreaming}
+          className="px-4 py-2 border rounded-xl transition-colors disabled:cursor-not-allowed text-muted-foreground hover:text-primary border-border hover:border-primary/50 disabled:text-primary/70 disabled:border-primary/30 disabled:hover:text-primary/70 disabled:hover:border-primary/30"
         >
-          重新解读
+          {isStreaming ? (
+            <span className="flex items-center gap-2">
+              <span className="relative flex items-center justify-center w-4 h-4">
+                <span className="absolute w-2 h-2 bg-primary/80 rounded-full" />
+                <span className="absolute w-4 h-4 bg-primary/40 rounded-full animate-ping" />
+              </span>
+              正在解读
+            </span>
+          ) : '重新解读'}
         </button>
         <button
           onClick={takeScreenshot}
