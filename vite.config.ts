@@ -32,15 +32,24 @@ function ttsApiPlugin(): Plugin {
 
         try {
           const data = JSON.parse(body)
-          if (!data.text || !data.appId || !data.accessToken) {
+          if (!data.text) {
             res.writeHead(400, { 'Content-Type': 'application/json' })
-            res.end(JSON.stringify({ error: 'Missing required fields' }))
+            res.end(JSON.stringify({ error: 'Missing text' }))
             return
           }
 
-          const voiceType = data.voiceType || 'zh_female_shuangkuaisisi_moon_bigtts'
-          // 根据音色自动判断资源 ID：_moon_ = 1.0, _uranus_ = 2.0
-          const resourceId = voiceType.includes('_uranus_') ? 'seed-tts-2.0' : 'seed-tts-1.0'
+          // 从环境变量读取认证信息（与 Vercel 函数一致）
+          const appId = process.env.VITE_DOUBAO_TTS_APP_ID
+          const accessToken = process.env.VITE_DOUBAO_TTS_ACCESS_TOKEN
+          if (!appId || !accessToken) {
+            res.writeHead(500, { 'Content-Type': 'application/json' })
+            res.end(JSON.stringify({ error: 'TTS not configured: missing VITE_DOUBAO_TTS_APP_ID or VITE_DOUBAO_TTS_ACCESS_TOKEN' }))
+            return
+          }
+
+          const voiceType = (data.voiceType || process.env.VITE_DOUBAO_TTS_VOICE_TYPE || 'zh_female_shuangkuaisisi_moon_bigtts').trim()
+          // 根据音色自动判断资源 ID：bigtts = 2.0, 其他 = 1.0
+          const resourceId = voiceType.includes('bigtts') ? 'seed-tts-2.0' : 'seed-tts-1.0'
           console.log('[TTS] Request:', { voiceType, resourceId, textLen: data.text?.length })
 
           const ttsBody = {
@@ -59,8 +68,8 @@ function ttsApiPlugin(): Plugin {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
-              'X-Api-App-Id': data.appId,
-              'X-Api-Access-Key': data.accessToken,
+              'X-Api-App-Id': appId,
+              'X-Api-Access-Key': accessToken,
               'X-Api-Resource-Id': resourceId,
             },
             body: JSON.stringify(ttsBody),
