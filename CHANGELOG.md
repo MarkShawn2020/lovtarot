@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.3.0
+
+### Features
+
+- **Reading**: Add confirmation ritual UI before AI reading starts (logged-in users)
+- **UI**: Crystal ball animation with "开启解读" button for ceremonial experience
+- **UI**: Mobile layout padding adjustment for better visibility
+
+### Refactoring
+
+- Refactored audio button and BGM service
+
 ## 0.2.0
 
 ### Features
