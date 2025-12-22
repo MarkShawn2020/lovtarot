@@ -4,7 +4,7 @@ import { AudioButton, AudioControlGroup, PlayIcon, PauseIcon, StopIcon } from '.
 
 export function BGMControl() {
   const [playing, setPlaying] = useState(false)
-  const [vol, setVol] = useState(0.15)
+  const [vol, setVol] = useState(0.3)
 
   useEffect(() => {
     initBGM()

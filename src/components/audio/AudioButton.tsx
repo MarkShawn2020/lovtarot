@@ -1,4 +1,4 @@
-import { useState, type ReactNode, type ButtonHTMLAttributes } from 'react'
+import { type ReactNode, type ButtonHTMLAttributes } from 'react'
 
 type Variant = 'primary' | 'secondary'
 
@@ -15,13 +15,14 @@ const variantStyles: Record<Variant, string> = {
 }
 
 export function AudioButton({ variant = 'primary', icon, label, iconOnly, className = '', ...props }: ButtonProps) {
-  const base = 'h-8 rounded-full border flex items-center transition-all'
-  const padding = iconOnly ? 'w-8 justify-center' : 'px-3 gap-1.5 min-w-20'
+  // 移动端适配：最小触摸目标 44px
+  const base = 'h-10 sm:h-8 rounded-full border flex items-center transition-all active:scale-95'
+  const padding = iconOnly ? 'w-10 sm:w-8 justify-center' : 'px-4 sm:px-3 gap-2 sm:gap-1.5 min-w-[5rem]'
 
   return (
     <button className={`${base} ${padding} ${variantStyles[variant]} ${className}`} {...props}>
       {icon}
-      {label && <span className="text-xs font-medium">{label}</span>}
+      {label && <span className="text-sm sm:text-xs font-medium">{label}</span>}
     </button>
   )
 }
@@ -34,28 +35,27 @@ interface AudioControlGroupProps {
 }
 
 export function AudioControlGroup({ children, volume, onVolumeChange }: AudioControlGroupProps) {
-  const [showVolume, setShowVolume] = useState(false)
-
   return (
-    <div
-      className="flex items-center gap-2"
-      onMouseEnter={() => setShowVolume(true)}
-      onMouseLeave={() => setShowVolume(false)}
-    >
+    <div className="flex items-center gap-2">
       {children}
-      {showVolume && (
-        <div className="h-8 bg-secondary/90 px-3 rounded-full border border-border shadow flex items-center">
-          <input
-            type="range"
-            min="0"
-            max="1"
-            step="0.05"
-            value={volume}
-            onChange={(e) => onVolumeChange(parseFloat(e.target.value))}
-            className="w-20 h-1 accent-primary cursor-pointer"
-          />
-        </div>
-      )}
+      <div className="h-12 sm:h-8 bg-secondary/90 px-4 sm:px-3 rounded-full border border-border shadow flex items-center gap-2">
+        <SpeakerIcon className="w-4 h-4 text-muted-foreground shrink-0" />
+        <input
+          type="range"
+          min="0"
+          max="1"
+          step="0.05"
+          value={volume}
+          onChange={(e) => onVolumeChange(parseFloat(e.target.value))}
+          className="w-28 sm:w-20 h-3 sm:h-1 accent-primary cursor-pointer
+                     [&::-webkit-slider-thumb]:w-6 [&::-webkit-slider-thumb]:h-6
+                     sm:[&::-webkit-slider-thumb]:w-3 sm:[&::-webkit-slider-thumb]:h-3
+                     [&::-webkit-slider-thumb]:rounded-full
+                     [&::-webkit-slider-thumb]:bg-primary
+                     [&::-webkit-slider-thumb]:appearance-none
+                     [&::-webkit-slider-thumb]:shadow-md"
+        />
+      </div>
     </div>
   )
 }

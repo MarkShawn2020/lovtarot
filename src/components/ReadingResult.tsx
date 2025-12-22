@@ -106,6 +106,7 @@ function TypewriterText({
 
 export type StreamingPhase =
   | 'idle'           // 空闲
+  | 'awaiting_confirmation' // 等待用户确认开启解读（登录后的仪式感）
   | 'requesting'     // 请求大模型回复
   | 'thinking'       // 大模型正在思考
   | 'reading'        // 大模型正在解读
@@ -156,8 +157,8 @@ export function ReadingResult({
   const [reasoning, setReasoning] = useState(cachedReasoning || '')
   const [reasoningExpanded, setReasoningExpanded] = useState(false)
   const [reading, setReading] = useState(cachedReading || '')
-  // 如果有缓存则直接 idle；否则需要登录才能 requesting
-  const [phase, setPhase] = useState<StreamingPhase>(cachedReading ? 'idle' : (user ? 'requesting' : 'idle'))
+  // 如果有缓存则直接 idle；否则已登录显示确认界面，未登录显示登录提示
+  const [phase, setPhase] = useState<StreamingPhase>(cachedReading ? 'idle' : (user ? 'awaiting_confirmation' : 'idle'))
   const [error, setError] = useState<string | null>(null)
   const [retryCount, setRetryCount] = useState(0)
   const [ignoreCache, setIgnoreCache] = useState(false)
@@ -387,6 +388,8 @@ export function ReadingResult({
     if (cachedReading && !ignoreCache) return
     // 未登录且没有缓存，不请求 AI
     if (!user) return
+    // 等待用户确认时不开始请求
+    if (phase === 'awaiting_confirmation') return
 
     let cancelled = false
     let fullReasoning = ''
@@ -470,7 +473,7 @@ export function ReadingResult({
       abortController.abort()
       stopTTS()
     }
-  }, [sessionId, question, cards, cachedReading, ignoreCache, playTTS, stopTTS, updateAudioUrl, retryCount, user])
+  }, [sessionId, question, cards, cachedReading, ignoreCache, playTTS, stopTTS, updateAudioUrl, retryCount, user, phase])
 
   // 注册到全局 TTS 控制（只有当有内容可播放时才注册）
   useEffect(() => {
@@ -524,6 +527,46 @@ export function ReadingResult({
           >
             登录 / 注册
           </Link>
+        </div>
+      </div>
+    )
+  }
+
+  // 已登录但等待确认，显示开启解读的仪式界面
+  if (phase === 'awaiting_confirmation') {
+    return (
+      <div className="h-full flex flex-col bg-card/40 backdrop-blur-sm border border-border/30 rounded-xl p-4">
+        <div className="flex items-center justify-between mb-3 shrink-0">
+          <h3 className="text-primary text-sm font-medium font-serif">
+            牌面解读
+          </h3>
+        </div>
+        <div className="flex-1 flex flex-col items-center justify-center py-8">
+          {/* 水晶球图标 - 准备就绪状态 */}
+          <div className="relative w-20 h-20 mb-6">
+            {/* 外层柔和光晕 */}
+            <div className="absolute inset-0 rounded-full bg-primary/15 animate-pulse" />
+            {/* 中层光环 */}
+            <div className="absolute inset-2 rounded-full border border-primary/30" />
+            {/* 内核 - 静态渐变 */}
+            <div className="absolute inset-4 rounded-full bg-gradient-to-br from-primary/30 via-primary/50 to-primary/30 shadow-lg shadow-primary/20" />
+            {/* 中心星星图标 */}
+            <div className="absolute inset-0 flex items-center justify-center">
+              <svg className="w-6 h-6 text-primary/80" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M12 2l2.4 7.4h7.6l-6 4.6 2.3 7.4-6.3-4.6-6.3 4.6 2.3-7.4-6-4.6h7.6z" />
+              </svg>
+            </div>
+          </div>
+          <p className="text-foreground/90 text-sm mb-1 font-serif">牌面已就位</p>
+          <p className="text-muted-foreground text-xs mb-6">静心凝神，准备聆听命运的回响</p>
+          <button
+            onClick={() => setPhase('requesting')}
+            className="group relative px-8 py-3 bg-primary text-primary-foreground hover:bg-primary/90 rounded-xl transition-all text-sm font-medium shadow-lg shadow-primary/20 hover:shadow-primary/30"
+          >
+            <span className="relative z-10">开启解读</span>
+            {/* 按钮光效 */}
+            <div className="absolute inset-0 rounded-xl bg-gradient-to-r from-transparent via-white/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+          </button>
         </div>
       </div>
     )

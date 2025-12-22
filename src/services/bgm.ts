@@ -23,7 +23,7 @@ function loadState(): BGMState {
     const saved = localStorage.getItem(STORAGE_KEY)
     if (saved) return JSON.parse(saved)
   } catch {}
-  return { volume: 0.15, enabled: true }
+  return { volume: 0.3, enabled: true }
 }
 
 function saveState(state: Partial<BGMState>): void {
@@ -48,7 +48,7 @@ export function initBGM(): void {
 
   const state = loadState()
   audio = new Audio(getRandomTrack())
-  audio.volume = state.volume
+  audio.volume = Math.pow(state.volume, 3)  // 滑块值转实际音量
   audio.loop = false
 
   audio.addEventListener('ended', () => {
@@ -89,16 +89,31 @@ export function stopBGM(): void {
   }
 }
 
-export function setVolume(vol: number): void {
-  const v = Math.max(0, Math.min(1, vol))
+// 滑块值 -> 实际音量（指数曲线，低音量区更精细）
+function sliderToVolume(slider: number): number {
+  return Math.pow(slider, 3)  // 0.5 滑块 = 0.125 音量
+}
+
+// 实际音量 -> 滑块值（反函数）
+function volumeToSlider(volume: number): number {
+  return Math.pow(volume, 1/3)
+}
+
+export function setVolume(slider: number): void {
+  const s = Math.max(0, Math.min(1, slider))
+  const actualVolume = sliderToVolume(s)
   if (audio) {
-    audio.volume = v
+    audio.volume = actualVolume
   }
-  saveState({ volume: v })
+  saveState({ volume: s })  // 存储滑块值
 }
 
 export function getVolume(): number {
-  return audio?.volume ?? loadState().volume
+  return loadState().volume  // 返回滑块值
+}
+
+export function getActualVolume(): number {
+  return audio?.volume ?? sliderToVolume(loadState().volume)
 }
 
 export function isBGMPlaying(): boolean {
