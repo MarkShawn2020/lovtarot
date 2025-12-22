@@ -157,7 +157,6 @@ export function ReadingResult({
   // 如果有缓存则直接 idle；否则已登录显示确认界面，未登录显示登录提示
   const [phase, setPhase] = useState<StreamingPhase>(cachedReading ? 'idle' : (user ? 'awaiting_confirmation' : 'idle'))
   const [error, setError] = useState<string | null>(null)
-  const [_retryCount, _setRetryCount] = useState(0)  // 暂时禁用重试功能
   const [ignoreCache, setIgnoreCache] = useState(false)
   const [thinkingSeconds, setThinkingSeconds] = useState(cachedThinkingSeconds || 0)
   const [audioUrl, setAudioUrl] = useState<string | undefined>(cachedAudioUrl)
@@ -349,7 +348,7 @@ export function ReadingResult({
       setError(null)
       setIgnoreCache(true)
       shouldFetchRef.current = true  // 标记需要重新请求
-      setRetryCount(c => c + 1)
+      setFetchTrigger(n => n + 1)  // 触发重新请求
     }
   }, [retryTrigger, stopTTS, updateAudioUrl])
 
@@ -592,7 +591,7 @@ export function ReadingResult({
         <div className="flex items-center justify-between mb-3">
           <p className="text-destructive text-sm">{error}</p>
           <button
-            onClick={() => setRetryCount(c => c + 1)}
+            onClick={() => setFetchTrigger(n => n + 1)}
             className="text-xs text-muted-foreground hover:text-foreground transition-colors"
           >
             重试
