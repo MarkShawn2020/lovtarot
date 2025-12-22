@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, ReactNode } from "react"
+import { createContext, useContext, useEffect, useState, type ReactNode } from "react"
 import type { User, Session } from "@supabase/supabase-js"
 import { supabase } from "../services/supabase"
 
@@ -72,7 +72,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
     // 需要验证邮箱
     const needsVerification = !error && data?.user && !data.user.email_confirmed_at
-    return { error, needsVerification }
+    return { error, needsVerification: needsVerification || undefined }
   }
 
   const signIn = async (email: string, password: string) => {

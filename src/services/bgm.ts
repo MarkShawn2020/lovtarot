@@ -94,8 +94,9 @@ function sliderToVolume(slider: number): number {
   return Math.pow(slider, 3)  // 0.5 滑块 = 0.125 音量
 }
 
-// 实际音量 -> 滑块值（反函数）
-function volumeToSlider(volume: number): number {
+// 实际音量 -> 滑块值（反函数）- 保留用于未来可能的双向转换
+// @ts-expect-error unused but kept for symmetry with sliderToVolume
+function _volumeToSlider(volume: number): number {
   return Math.pow(volume, 1/3)
 }
 

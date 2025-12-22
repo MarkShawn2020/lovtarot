@@ -151,9 +151,6 @@ export function ReadingResult({
   const { user, isLoading: authLoading } = useAuth()
   const location = useLocation()
 
-  // 如果有缓存的解读，任何人都可以看；否则需要登录才能获取新解读
-  const canRequestReading = !!cachedReading || !!user
-
   const [reasoning, setReasoning] = useState(cachedReasoning || '')
   const [reasoningExpanded, setReasoningExpanded] = useState(false)
   const [reading, setReading] = useState(cachedReading || '')

@@ -50,7 +50,7 @@ export function AuthPage() {
     } catch (err) {
       if (err instanceof z.ZodError) {
         const fieldErrors: { email?: string; password?: string } = {}
-        err.errors.forEach((error) => {
+        err.issues.forEach((error) => {
           if (error.path[0] === "email") {
             fieldErrors.email = error.message
           }
