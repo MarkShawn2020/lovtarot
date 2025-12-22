@@ -173,6 +173,7 @@ export function ReadingResult({
   const onPhaseChangeRef = useRef(onPhaseChange)
   const prevResultRef = useRef<PrevResult | null>(null)
   const abortControllerRef = useRef<AbortController | null>(null)
+  const shouldFetchRef = useRef(false)  // 标记是否应该发起请求
 
   // 保持 callback ref 最新
   useEffect(() => {
@@ -347,6 +348,7 @@ export function ReadingResult({
       setReading('')
       setError(null)
       setIgnoreCache(true)
+      shouldFetchRef.current = true  // 标记需要重新请求
       setRetryCount(c => c + 1)
     }
   }, [retryTrigger, stopTTS, updateAudioUrl])
@@ -380,13 +382,28 @@ export function ReadingResult({
     onCompleteRef.current = onComplete
   }, [onComplete])
 
+  // 请求触发计数器（合并了用户点击"开启解读"和重试的触发）
+  const [fetchTrigger, setFetchTrigger] = useState(0)
+
+  // 当用户点击"开启解读"时触发请求
   useEffect(() => {
+    if (phase === 'requesting' && !cachedReading && !shouldFetchRef.current) {
+      shouldFetchRef.current = true
+      setFetchTrigger(n => n + 1)
+    }
+    // phase 不再是 requesting 时重置标记
+    if (phase !== 'requesting') {
+      shouldFetchRef.current = false
+    }
+  }, [phase, cachedReading])
+
+  useEffect(() => {
+    // 首次渲染不执行
+    if (fetchTrigger === 0) return
     // 有缓存则不重新请求
     if (cachedReading && !ignoreCache) return
     // 未登录且没有缓存，不请求 AI
     if (!user) return
-    // 等待用户确认时不开始请求
-    if (phase === 'awaiting_confirmation') return
 
     let cancelled = false
     let fullReasoning = ''
@@ -470,7 +487,7 @@ export function ReadingResult({
       abortController.abort()
       stopTTS()
     }
-  }, [sessionId, question, cards, cachedReading, ignoreCache, playTTS, stopTTS, updateAudioUrl, retryCount, user, phase])
+  }, [fetchTrigger, sessionId, question, cards, cachedReading, ignoreCache, playTTS, stopTTS, updateAudioUrl, user])
 
   // 注册到全局 TTS 控制（只有当有内容可播放时才注册）
   useEffect(() => {

@@ -114,19 +114,12 @@ export function ReadingPage() {
 
       {/* 底部工具栏 */}
       <div className="mt-8 flex items-center justify-center gap-3 text-sm">
-        {phase !== 'idle' ? (
+        {phase !== 'idle' && phase !== 'awaiting_confirmation' && (
           <button
             onClick={() => setStopTrigger(n => n + 1)}
             className="px-4 py-2 border rounded-xl transition-colors text-destructive/70 border-destructive/30 hover:text-destructive hover:border-destructive/50"
           >
             中断解读
-          </button>
-        ) : (
-          <button
-            onClick={() => setRetryTrigger(n => n + 1)}
-            className="px-4 py-2 border rounded-xl transition-colors text-muted-foreground hover:text-primary border-border hover:border-primary/50"
-          >
-            重新解读
           </button>
         )}
         <button
