@@ -1,9 +1,11 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
+import { Link, useLocation } from 'react-router-dom'
 import type { TarotCard } from '../data/tarot'
 import { getReadingStream } from '../services/ai'
 import { StreamingTTS } from '../services/tts-streaming'
 import { registerTTS, unregisterTTS, notifyListeners, type TTSState } from '../services/tts-control'
 import { generateAndCacheAudio } from '../services/tts-cache'
+import { useAuth } from '../hooks/useAuth'
 
 // 水晶球蓄力动画组件
 function CrystalBallLoader({ phase, thinkingSeconds }: { phase: StreamingPhase; thinkingSeconds: number }) {
@@ -145,10 +147,17 @@ export function ReadingResult({
   onComplete,
   onPhaseChange,
 }: Props) {
+  const { user, isLoading: authLoading } = useAuth()
+  const location = useLocation()
+
+  // 如果有缓存的解读，任何人都可以看；否则需要登录才能获取新解读
+  const canRequestReading = !!cachedReading || !!user
+
   const [reasoning, setReasoning] = useState(cachedReasoning || '')
   const [reasoningExpanded, setReasoningExpanded] = useState(false)
   const [reading, setReading] = useState(cachedReading || '')
-  const [phase, setPhase] = useState<StreamingPhase>(cachedReading ? 'idle' : 'requesting')
+  // 如果有缓存则直接 idle；否则需要登录才能 requesting
+  const [phase, setPhase] = useState<StreamingPhase>(cachedReading ? 'idle' : (user ? 'requesting' : 'idle'))
   const [error, setError] = useState<string | null>(null)
   const [retryCount, setRetryCount] = useState(0)
   const [ignoreCache, setIgnoreCache] = useState(false)
@@ -374,7 +383,10 @@ export function ReadingResult({
   }, [onComplete])
 
   useEffect(() => {
+    // 有缓存则不重新请求
     if (cachedReading && !ignoreCache) return
+    // 未登录且没有缓存，不请求 AI
+    if (!user) return
 
     let cancelled = false
     let fullReasoning = ''
@@ -458,7 +470,7 @@ export function ReadingResult({
       abortController.abort()
       stopTTS()
     }
-  }, [sessionId, question, cards, cachedReading, ignoreCache, playTTS, stopTTS, updateAudioUrl, retryCount])
+  }, [sessionId, question, cards, cachedReading, ignoreCache, playTTS, stopTTS, updateAudioUrl, retryCount, user])
 
   // 注册到全局 TTS 控制（只有当有内容可播放时才注册）
   useEffect(() => {
@@ -483,6 +495,39 @@ export function ReadingResult({
     window.addEventListener('beforeunload', stopTTS)
     return () => window.removeEventListener('beforeunload', stopTTS)
   }, [stopTTS])
+
+  // 未登录且无缓存，显示登录提示
+  if (!user && !cachedReading && !authLoading) {
+    const currentPath = location.pathname
+    return (
+      <div className="h-full flex flex-col bg-card/40 backdrop-blur-sm border border-border/30 rounded-xl p-4">
+        <div className="flex items-center justify-between mb-3 shrink-0">
+          <h3 className="text-primary text-sm font-medium font-serif">
+            牌面解读
+          </h3>
+        </div>
+        <div className="flex-1 flex flex-col items-center justify-center py-8">
+          {/* 锁定图标 */}
+          <div className="relative w-16 h-16 mb-6">
+            <div className="absolute inset-0 rounded-full bg-primary/10 animate-pulse"></div>
+            <div className="relative w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center">
+              <svg className="w-8 h-8 text-primary/70" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+              </svg>
+            </div>
+          </div>
+          <p className="text-foreground/80 text-sm mb-2">登录后开启牌面解读</p>
+          <p className="text-muted-foreground text-xs mb-6">AI 解读由大模型生成，需要登录使用</p>
+          <Link
+            to={`/auth?redirect=${encodeURIComponent(currentPath)}`}
+            className="px-6 py-2.5 bg-primary text-primary-foreground hover:bg-primary/90 rounded-xl transition-colors text-sm font-medium"
+          >
+            登录 / 注册
+          </Link>
+        </div>
+      </div>
+    )
+  }
 
   if (error) {
     return (

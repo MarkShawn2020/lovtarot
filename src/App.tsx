@@ -1,6 +1,7 @@
 import { Outlet } from 'react-router-dom'
 import { StarryBackground } from './components/StarryBackground'
 import { MusicControl } from './components/MusicControl'
+import { UserMenu } from './components/UserMenu'
 import './index.css'
 
 function App() {
@@ -8,6 +9,11 @@ function App() {
     <div className="min-h-screen flex flex-col relative">
       <StarryBackground />
       <MusicControl />
+
+      {/* 顶部用户菜单 */}
+      <div className="absolute top-4 right-4 z-20">
+        <UserMenu />
+      </div>
 
       <div className="flex-1 flex flex-col items-center justify-center px-4 py-4 overflow-auto">
         <main className="w-full max-w-2xl lg:max-w-4xl relative z-10">
