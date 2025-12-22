@@ -157,7 +157,7 @@ export function ReadingResult({
   // 如果有缓存则直接 idle；否则已登录显示确认界面，未登录显示登录提示
   const [phase, setPhase] = useState<StreamingPhase>(cachedReading ? 'idle' : (user ? 'awaiting_confirmation' : 'idle'))
   const [error, setError] = useState<string | null>(null)
-  const [retryCount, setRetryCount] = useState(0)
+  const [_retryCount, _setRetryCount] = useState(0)  // 暂时禁用重试功能
   const [ignoreCache, setIgnoreCache] = useState(false)
   const [thinkingSeconds, setThinkingSeconds] = useState(cachedThinkingSeconds || 0)
   const [audioUrl, setAudioUrl] = useState<string | undefined>(cachedAudioUrl)

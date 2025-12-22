@@ -24,7 +24,7 @@ export function ReadingPage() {
   }, [id])
 
   const contentRef = useRef<HTMLDivElement>(null)
-  const [retryTrigger, setRetryTrigger] = useState(0)
+  const [retryTrigger, _setRetryTrigger] = useState(0)  // 暂时禁用重试功能
 
   const takeScreenshot = useCallback(async () => {
     if (!contentRef.current) return
