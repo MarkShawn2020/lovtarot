@@ -6,10 +6,7 @@ const getConfig = () => ({
   voiceType: (import.meta.env.VITE_DOUBAO_TTS_VOICE_TYPE || 'zh_female_wanqudashu_moon_bigtts').trim(),
 })
 
-type AudioChunk = {
-  data: Uint8Array
-  index: number // 段落索引，用于保证播放顺序
-}
+// 段落索引用于保证播放顺序
 
 // 将文本按段落分割（以 \n\n 为分隔符，过滤空段落）
 export function splitTextByParagraphs(text: string): string[] {
