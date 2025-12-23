@@ -30,6 +30,7 @@ export class StreamingTTS {
   private isStopped = false
   private pendingRequests = 0
   private isFinished = false
+  private audioReadyCalled = false // 防止 onAudioReady 重复调用
   private abortController: AbortController | null = null
   private totalParagraphs = 0
 
@@ -50,7 +51,9 @@ export class StreamingTTS {
     this.audioChunks.clear()
     this.playedIndex = -1
     this.totalParagraphs = 0
+    this.audioReadyCalled = false
     this.abortController = new AbortController()
+    console.log('[TTS Streaming] Started')
   }
 
   // 发送单个段落进行 TTS（带索引）
@@ -162,17 +165,22 @@ export class StreamingTTS {
   }
 
   async finish(): Promise<void> {
+    console.log(`[TTS Streaming] finish() called, pendingRequests=${this.pendingRequests}, audioChunks.size=${this.audioChunks.size}`)
     this.isFinished = true
     this.checkEnd()
   }
 
   private checkEnd(): void {
+    console.log(`[TTS Streaming] checkEnd: isFinished=${this.isFinished}, pendingRequests=${this.pendingRequests}, audioChunks.size=${this.audioChunks.size}, audioReadyCalled=${this.audioReadyCalled}`)
+
     // 检查是否所有音频都已准备好
     if (this.isFinished && this.pendingRequests === 0) {
-      // 合并所有音频并回调
-      if (this.onAudioReady && this.audioChunks.size > 0) {
+      // 合并所有音频并回调（只调用一次）
+      if (this.onAudioReady && this.audioChunks.size > 0 && !this.audioReadyCalled) {
         const allAudio = this.mergeAudioChunks()
         if (allAudio.length > 0) {
+          this.audioReadyCalled = true
+          console.log(`[TTS Streaming] onAudioReady callback, total audio size: ${allAudio.length} bytes`)
           this.onAudioReady(allAudio)
         }
       }

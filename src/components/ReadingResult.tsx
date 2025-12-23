@@ -245,27 +245,37 @@ export function ReadingResult({
 
     // 没有缓存，使用实时 TTS（按段落播放）
     try {
-      ttsRef.current = new StreamingTTS({
+      const tts = new StreamingTTS({
         onError: (err) => console.error('[TTS] Error:', err),
         onEnd: () => {
           ttsStateRef.current = 'idle'
           ttsRef.current = null
           notifyListeners()
         },
+        onAudioReady: async (allAudio) => {
+          // 所有音频就绪，上传到缓存
+          console.log('[TTS playTTS] 所有音频就绪，开始上传缓存')
+          const url = await uploadAudioToCache(sessionId, allAudio)
+          if (url) {
+            updateAudioUrl(url)
+            console.log('[TTS playTTS] 音频缓存完成')
+          }
+        },
       })
+      ttsRef.current = tts
 
-      await ttsRef.current.start()
+      await tts.start()
       ttsStateRef.current = 'playing'
       notifyListeners()
 
-      // 按段落发送
-      ttsRef.current.sendText(content!)
-      ttsRef.current.finish()
+      // 按段落发送（需要 await 确保所有段落都被发送）
+      await tts.sendText(content!)
+      tts.finish()
     } catch (err) {
       console.error('[TTS] Start error:', err)
       ttsRef.current = null
     }
-  }, [])
+  }, [sessionId, updateAudioUrl])
 
   // 暂停 TTS（支持缓存音频和实时 TTS）
   const pauseTTS = useCallback(() => {
@@ -396,6 +406,9 @@ export function ReadingResult({
     }
   }, [phase, cachedReading])
 
+  // TTS 实例 ID，用于区分不同的 effect 运行
+  const ttsInstanceIdRef = useRef(0)
+
   useEffect(() => {
     // 首次渲染不执行
     if (fetchTrigger === 0) return
@@ -403,6 +416,9 @@ export function ReadingResult({
     if (cachedReading && !ignoreCache) return
     // 未登录且没有缓存，不请求 AI
     if (!user) return
+
+    // 递增实例 ID，用于判断回调是否属于当前实例
+    const currentInstanceId = ++ttsInstanceIdRef.current
 
     let cancelled = false
     let fullReasoning = ''
@@ -418,8 +434,11 @@ export function ReadingResult({
     let sentParagraphCount = 0
     let streamingTTS: StreamingTTS | null = null
 
+    // 检查当前实例是否仍然有效
+    const isCurrentInstance = () => ttsInstanceIdRef.current === currentInstanceId
+
     async function fetchReading() {
-      console.log('[Reading] 开始请求大模型回复')
+      console.log('[Reading] 开始请求大模型回复, instanceId:', currentInstanceId)
       setPhase('requesting')
       setReasoning('')
       setReading('')
@@ -427,7 +446,7 @@ export function ReadingResult({
 
       try {
         await getReadingStream(question, cards, (chunk, type) => {
-          if (cancelled || abortController.signal.aborted) return
+          if (cancelled || abortController.signal.aborted || !isCurrentInstance()) return
 
           if (type === 'reasoning') {
             if (!hasReceivedReasoning) {
@@ -447,16 +466,19 @@ export function ReadingResult({
               streamingTTS = new StreamingTTS({
                 onError: (err) => console.error('[TTS] Error:', err),
                 onEnd: () => {
+                  // 只有当前实例的回调才更新状态
+                  if (!isCurrentInstance()) return
                   console.log('[TTS] 播放完成')
                   ttsStateRef.current = 'idle'
                   ttsRef.current = null
                   notifyListeners()
                 },
                 onAudioReady: async (allAudio) => {
-                  // 所有音频就绪，上传到缓存
+                  // 只有当前实例的回调才上传缓存
+                  if (!isCurrentInstance()) return
                   console.log('[TTS] 所有音频就绪，开始上传缓存')
                   const url = await uploadAudioToCache(sessionId, allAudio)
-                  if (url && !cancelled && !abortController.signal.aborted) {
+                  if (url && isCurrentInstance()) {
                     updateAudioUrl(url)
                     console.log('[Reading] 音频缓存完成')
                   }
@@ -475,7 +497,7 @@ export function ReadingResult({
             const paragraphs = splitTextByParagraphs(fullReading)
             // 只发送已完成的段落（最后一个段落可能还在增长中）
             // 当检测到新段落开始时，说明上一个段落已完成
-            while (sentParagraphCount < paragraphs.length - 1 && streamingTTS) {
+            while (sentParagraphCount < paragraphs.length - 1 && streamingTTS && isCurrentInstance()) {
               const paragraphToSend = paragraphs[sentParagraphCount]
               console.log(`[TTS] 发送段落 ${sentParagraphCount}: ${paragraphToSend.substring(0, 30)}...`)
               streamingTTS.sendParagraph(paragraphToSend, sentParagraphCount)
@@ -484,7 +506,7 @@ export function ReadingResult({
           }
         })
 
-        if (!cancelled && !abortController.signal.aborted) {
+        if (!cancelled && !abortController.signal.aborted && isCurrentInstance()) {
           console.log('[Reading] 大模型解读完毕')
 
           // 发送最后一个段落
@@ -507,7 +529,7 @@ export function ReadingResult({
           console.log('[Reading] 流程结束')
         }
       } catch (err) {
-        if (!cancelled && !abortController.signal.aborted) {
+        if (!cancelled && !abortController.signal.aborted && isCurrentInstance()) {
           setPhase('idle')
           setError('获取解读时出现问题，请稍后重试')
           console.error('[Reading] 请求出错:', err)
@@ -518,11 +540,16 @@ export function ReadingResult({
     fetchReading()
 
     return () => {
+      console.log('[Reading] Cleanup, instanceId:', currentInstanceId)
       cancelled = true
       abortController.abort()
-      stopTTS()
+      // 注意：不在这里停止 TTS！
+      // StrictMode 会导致 cleanup 被频繁调用，如果在这里停止 TTS，请求会被取消
+      // TTS 的回调会通过 isCurrentInstance() 检查来判断是否应该更新状态
+      // 当用户主动停止时，通过 stopTrigger 来处理
     }
-  }, [fetchTrigger, sessionId, question, cards, cachedReading, ignoreCache, stopTTS, updateAudioUrl, user])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fetchTrigger, sessionId, question, cachedReading, ignoreCache, updateAudioUrl, user])
 
   // 注册到全局 TTS 控制（只有当有内容可播放时才注册）
   useEffect(() => {
