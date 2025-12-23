@@ -1,5 +1,6 @@
 // TTS HTTP 流式语音合成服务
 // 直接调用 /api/tts (Vercel Serverless Function)
+// 支持按段落流式请求和播放
 
 const getConfig = () => ({
   voiceType: (import.meta.env.VITE_DOUBAO_TTS_VOICE_TYPE || 'zh_female_wanqudashu_moon_bigtts').trim(),
@@ -7,67 +8,70 @@ const getConfig = () => ({
 
 type AudioChunk = {
   data: Uint8Array
-  isLast: boolean
+  index: number // 段落索引，用于保证播放顺序
+}
+
+// 将文本按段落分割（以 \n\n 为分隔符，过滤空段落）
+export function splitTextByParagraphs(text: string): string[] {
+  return text
+    .split(/\n\n+/)
+    .map(p => p.trim())
+    .filter(p => p.length > 0)
 }
 
 export class StreamingTTS {
-  private audioQueue: AudioChunk[] = []
+  private audioChunks: Map<number, Uint8Array> = new Map() // 按索引存储音频
+  private playedIndex = -1 // 已播放到的索引
   private isPlaying = false
   private currentAudio: HTMLAudioElement | null = null
   private onError?: (error: Error) => void
   private onEnd?: () => void
+  private onAudioReady?: (allAudio: Uint8Array) => void // 所有音频就绪回调
   private isStopped = false
   private pendingRequests = 0
   private isFinished = false
   private abortController: AbortController | null = null
-  // 请求队列，避免并发导致豆包限流
-  private requestQueue: string[] = []
-  private isProcessingQueue = false
+  private totalParagraphs = 0
 
-  constructor(options?: { onError?: (error: Error) => void; onEnd?: () => void }) {
+  constructor(options?: {
+    onError?: (error: Error) => void
+    onEnd?: () => void
+    onAudioReady?: (allAudio: Uint8Array) => void
+  }) {
     this.onError = options?.onError
     this.onEnd = options?.onEnd
+    this.onAudioReady = options?.onAudioReady
   }
 
   async start(): Promise<void> {
     this.isStopped = false
     this.isFinished = false
     this.pendingRequests = 0
-    this.audioQueue = []
+    this.audioChunks.clear()
+    this.playedIndex = -1
+    this.totalParagraphs = 0
     this.abortController = new AbortController()
   }
 
-  async sendText(text: string): Promise<void> {
-    if (this.isStopped) return
+  // 发送单个段落进行 TTS（带索引）
+  async sendParagraph(text: string, index: number): Promise<void> {
+    if (this.isStopped || !text.trim()) return
 
-    // 加入队列，串行处理避免并发限流
-    this.requestQueue.push(text)
     this.pendingRequests++
-    this.processQueue()
-  }
+    this.totalParagraphs = Math.max(this.totalParagraphs, index + 1)
 
-  private async processQueue(): Promise<void> {
-    if (this.isProcessingQueue || this.requestQueue.length === 0) return
-    this.isProcessingQueue = true
-
-    while (this.requestQueue.length > 0 && !this.isStopped) {
-      const text = this.requestQueue.shift()!
-      await this.doSendText(text)
-    }
-
-    this.isProcessingQueue = false
-  }
-
-  private async doSendText(text: string): Promise<void> {
     // Mock 模式：使用浏览器内置 TTS
     if (import.meta.env.VITE_DEV_MOCK === 'true') {
-      console.log('[TTS Streaming] Mock mode, using Web Speech API')
+      console.log('[TTS Streaming] Mock mode, paragraph', index)
       return new Promise<void>((resolve) => {
         const utterance = new SpeechSynthesisUtterance(text)
         utterance.lang = 'zh-CN'
         utterance.rate = 1.2
         utterance.onend = () => {
           this.pendingRequests--
+          // Mock 模式标记该段落完成
+          this.audioChunks.set(index, new Uint8Array(0))
+          this.tryPlayNext()
           this.checkEnd()
           resolve()
         }
@@ -76,7 +80,23 @@ export class StreamingTTS {
           this.checkEnd()
           resolve()
         }
-        speechSynthesis.speak(utterance)
+        // Mock 模式按顺序等待播放
+        if (index === this.playedIndex + 1) {
+          speechSynthesis.speak(utterance)
+          this.playedIndex = index
+        } else {
+          // 延迟播放，等前面的完成
+          const checkAndSpeak = () => {
+            if (this.isStopped) { resolve(); return }
+            if (index === this.playedIndex + 1) {
+              speechSynthesis.speak(utterance)
+              this.playedIndex = index
+            } else {
+              setTimeout(checkAndSpeak, 100)
+            }
+          }
+          checkAndSpeak()
+        }
       })
     }
 
@@ -113,7 +133,11 @@ export class StreamingTTS {
           bytes[i] = binaryString.charCodeAt(i)
         }
 
-        this.audioQueue.push({ data: bytes, isLast: true })
+        // 存储到对应索引
+        this.audioChunks.set(index, bytes)
+        console.log(`[TTS] Paragraph ${index} ready, ${bytes.length} bytes`)
+
+        // 尝试播放下一个
         this.tryPlayNext()
       }
     } catch (e) {
@@ -125,25 +149,75 @@ export class StreamingTTS {
     }
   }
 
+  // 兼容旧接口：发送全文（内部按段落分割）
+  async sendText(text: string): Promise<void> {
+    const paragraphs = splitTextByParagraphs(text)
+    console.log(`[TTS] Splitting text into ${paragraphs.length} paragraphs`)
+
+    // 依次发送每个段落（串行请求以避免限流）
+    for (let i = 0; i < paragraphs.length; i++) {
+      if (this.isStopped) break
+      await this.sendParagraph(paragraphs[i], i)
+    }
+  }
+
   async finish(): Promise<void> {
     this.isFinished = true
     this.checkEnd()
   }
 
   private checkEnd(): void {
-    if (this.isFinished && this.pendingRequests === 0 && !this.isPlaying && this.audioQueue.length === 0) {
-      this.onEnd?.()
+    // 检查是否所有音频都已准备好
+    if (this.isFinished && this.pendingRequests === 0) {
+      // 合并所有音频并回调
+      if (this.onAudioReady && this.audioChunks.size > 0) {
+        const allAudio = this.mergeAudioChunks()
+        if (allAudio.length > 0) {
+          this.onAudioReady(allAudio)
+        }
+      }
+
+      // 如果播放完毕，触发结束回调
+      if (!this.isPlaying && this.playedIndex >= this.totalParagraphs - 1) {
+        this.onEnd?.()
+      }
     }
   }
 
-  private tryPlayNext(): void {
-    if (this.isPlaying || this.audioQueue.length === 0 || this.isStopped) return
+  // 合并所有音频块（按索引顺序）
+  private mergeAudioChunks(): Uint8Array {
+    const chunks: Uint8Array[] = []
+    for (let i = 0; i < this.totalParagraphs; i++) {
+      const chunk = this.audioChunks.get(i)
+      if (chunk && chunk.length > 0) {
+        chunks.push(chunk)
+      }
+    }
+    if (chunks.length === 0) return new Uint8Array(0)
 
-    const chunk = this.audioQueue.shift()!
-    this.playAudio(chunk.data)
+    const totalLength = chunks.reduce((sum, c) => sum + c.length, 0)
+    const result = new Uint8Array(totalLength)
+    let offset = 0
+    for (const chunk of chunks) {
+      result.set(chunk, offset)
+      offset += chunk.length
+    }
+    return result
   }
 
-  private playAudio(audioData: Uint8Array): void {
+  private tryPlayNext(): void {
+    if (this.isPlaying || this.isStopped) return
+
+    // 尝试播放下一个索引的音频
+    const nextIndex = this.playedIndex + 1
+    const nextChunk = this.audioChunks.get(nextIndex)
+
+    if (nextChunk && nextChunk.length > 0) {
+      this.playAudio(nextChunk, nextIndex)
+    }
+  }
+
+  private playAudio(audioData: Uint8Array, index: number): void {
     if (this.isStopped) return
 
     this.isPlaying = true
@@ -155,27 +229,28 @@ export class StreamingTTS {
       URL.revokeObjectURL(url)
       this.currentAudio = null
       this.isPlaying = false
+      this.playedIndex = index
 
       if (this.isStopped) return
 
-      // 继续播放队列中的音频
-      if (this.audioQueue.length > 0) {
-        this.tryPlayNext()
-      } else {
-        this.checkEnd()
-      }
+      // 继续播放下一个段落
+      this.tryPlayNext()
+      this.checkEnd()
     }
 
     this.currentAudio.onerror = () => {
       URL.revokeObjectURL(url)
       this.currentAudio = null
       this.isPlaying = false
+      this.playedIndex = index
       this.tryPlayNext()
     }
 
+    console.log(`[TTS] Playing paragraph ${index}`)
     this.currentAudio.play().catch((e) => {
       console.error('Audio play error:', e)
       this.isPlaying = false
+      this.playedIndex = index
       this.tryPlayNext()
     })
   }
@@ -183,8 +258,7 @@ export class StreamingTTS {
   stop(): void {
     this.isStopped = true
     this.isFinished = true
-    this.audioQueue = []
-    this.requestQueue = []
+    this.audioChunks.clear()
 
     // 取消所有未完成的请求
     if (this.abortController) {
@@ -221,6 +295,12 @@ export class StreamingTTS {
   }
 
   get isSpeaking(): boolean {
-    return this.isPlaying || this.audioQueue.length > 0
+    return this.isPlaying || this.audioChunks.size > this.playedIndex + 1
+  }
+
+  // 获取所有已收集的音频（用于缓存）
+  getAllAudio(): Uint8Array | null {
+    if (this.audioChunks.size === 0) return null
+    return this.mergeAudioChunks()
   }
 }

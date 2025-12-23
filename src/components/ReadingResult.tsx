@@ -2,9 +2,9 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import type { TarotCard } from '../data/tarot'
 import { getReadingStream } from '../services/ai'
-import { StreamingTTS } from '../services/tts-streaming'
+import { StreamingTTS, splitTextByParagraphs } from '../services/tts-streaming'
 import { registerTTS, unregisterTTS, notifyListeners, type TTSState } from '../services/tts-control'
-import { generateAndCacheAudio } from '../services/tts-cache'
+import { uploadAudioToCache } from '../services/tts-cache'
 import { useAuth } from '../hooks/useAuth'
 
 // 水晶球蓄力动画组件
@@ -243,7 +243,7 @@ export function ReadingResult({
       return
     }
 
-    // 没有缓存，使用实时 TTS
+    // 没有缓存，使用实时 TTS（按段落播放）
     try {
       ttsRef.current = new StreamingTTS({
         onError: (err) => console.error('[TTS] Error:', err),
@@ -258,7 +258,7 @@ export function ReadingResult({
       ttsStateRef.current = 'playing'
       notifyListeners()
 
-      // 一次性发送全文
+      // 按段落发送
       ttsRef.current.sendText(content!)
       ttsRef.current.finish()
     } catch (err) {
@@ -414,6 +414,10 @@ export function ReadingResult({
     const abortController = new AbortController()
     abortControllerRef.current = abortController
 
+    // 段落级 TTS 追踪
+    let sentParagraphCount = 0
+    let streamingTTS: StreamingTTS | null = null
+
     async function fetchReading() {
       console.log('[Reading] 开始请求大模型回复')
       setPhase('requesting')
@@ -438,31 +442,63 @@ export function ReadingResult({
               hasReceivedReading = true
               console.log('[Reading] 大模型思考结束，开始解读')
               setPhase('reading')
+
+              // 初始化 TTS 流
+              streamingTTS = new StreamingTTS({
+                onError: (err) => console.error('[TTS] Error:', err),
+                onEnd: () => {
+                  console.log('[TTS] 播放完成')
+                  ttsStateRef.current = 'idle'
+                  ttsRef.current = null
+                  notifyListeners()
+                },
+                onAudioReady: async (allAudio) => {
+                  // 所有音频就绪，上传到缓存
+                  console.log('[TTS] 所有音频就绪，开始上传缓存')
+                  const url = await uploadAudioToCache(sessionId, allAudio)
+                  if (url && !cancelled && !abortController.signal.aborted) {
+                    updateAudioUrl(url)
+                    console.log('[Reading] 音频缓存完成')
+                  }
+                },
+              })
+              streamingTTS.start()
+              ttsRef.current = streamingTTS
+              ttsStateRef.current = 'playing'
+              notifyListeners()
             }
+
             fullReading += chunk
             setReading(fullReading)
+
+            // 检测新完成的段落并发送 TTS 请求
+            const paragraphs = splitTextByParagraphs(fullReading)
+            // 只发送已完成的段落（最后一个段落可能还在增长中）
+            // 当检测到新段落开始时，说明上一个段落已完成
+            while (sentParagraphCount < paragraphs.length - 1 && streamingTTS) {
+              const paragraphToSend = paragraphs[sentParagraphCount]
+              console.log(`[TTS] 发送段落 ${sentParagraphCount}: ${paragraphToSend.substring(0, 30)}...`)
+              streamingTTS.sendParagraph(paragraphToSend, sentParagraphCount)
+              sentParagraphCount++
+            }
           }
         })
 
         if (!cancelled && !abortController.signal.aborted) {
           console.log('[Reading] 大模型解读完毕')
 
-          // 生成音频
-          console.log('[Reading] 开始请求音频')
-          setPhase('generating_audio')
+          // 发送最后一个段落
+          const paragraphs = splitTextByParagraphs(fullReading)
+          if (streamingTTS && sentParagraphCount < paragraphs.length) {
+            const lastParagraph = paragraphs[sentParagraphCount]
+            console.log(`[TTS] 发送最后段落 ${sentParagraphCount}: ${lastParagraph.substring(0, 30)}...`)
+            streamingTTS.sendParagraph(lastParagraph, sentParagraphCount)
+            sentParagraphCount++
+          }
 
-          const audioPromise = generateAndCacheAudio(sessionId, fullReading)
-
-          // 同时开始实时 TTS 播放
-          console.log('[Reading] 开始自动播放音频')
-          setPhase('playing')
-          playTTS(fullReading)
-
-          // 等待音频生成完成
-          const url = await audioPromise
-          if (url && !cancelled && !abortController.signal.aborted) {
-            updateAudioUrl(url)
-            console.log('[Reading] 音频缓存完成')
+          // 标记 TTS 完成
+          if (streamingTTS) {
+            streamingTTS.finish()
           }
 
           // 完成回调
@@ -486,7 +522,7 @@ export function ReadingResult({
       abortController.abort()
       stopTTS()
     }
-  }, [fetchTrigger, sessionId, question, cards, cachedReading, ignoreCache, playTTS, stopTTS, updateAudioUrl, user])
+  }, [fetchTrigger, sessionId, question, cards, cachedReading, ignoreCache, stopTTS, updateAudioUrl, user])
 
   // 注册到全局 TTS 控制（只有当有内容可播放时才注册）
   useEffect(() => {

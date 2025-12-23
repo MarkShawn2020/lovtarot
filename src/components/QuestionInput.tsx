@@ -43,6 +43,12 @@ export function QuestionInput({ onSubmit }: Props) {
         <textarea
           value={question}
           onChange={(e) => setQuestion(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Tab' && !question) {
+              e.preventDefault()
+              setQuestion(placeholder)
+            }
+          }}
           placeholder={placeholder}
           rows={2}
           className="w-full px-4 py-3 bg-card/80 backdrop-blur-sm text-card-foreground
