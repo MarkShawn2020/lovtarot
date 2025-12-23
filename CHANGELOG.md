@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.4.0
+
+### Minor Changes
+
+- - feat(profile): 完善个人中心功能
+  - feat(mobile): 重构移动端布局和底部导航
+  - feat(dev): 添加 mock 模式加速开发调试
+
 ## 0.3.0
 
 ### Features
