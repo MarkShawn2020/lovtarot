@@ -1,6 +1,8 @@
 import { Link, useNavigate } from 'react-router-dom'
 import { getSessions, deleteSession, type Session } from '../services/session'
 import { useState, useEffect } from 'react'
+import { useAuth } from '../hooks/useAuth'
+import { PersonIcon } from '@radix-ui/react-icons'
 
 function formatDate(ts: number): string {
   return new Date(ts).toLocaleString('zh-CN', {
@@ -13,6 +15,7 @@ function formatDate(ts: number): string {
 
 export function HistoryPage() {
   const navigate = useNavigate()
+  const { user } = useAuth()
   const [sessions, setSessions] = useState<Session[] | null>(null)
 
   useEffect(() => {
@@ -86,7 +89,8 @@ export function HistoryPage() {
               to={`/s/${session.id}`}
               className="block bg-card/60 backdrop-blur-sm border border-border/50 rounded-xl p-3 hover:border-primary/50 transition-all group"
             >
-              <div className="flex items-start justify-between gap-3">
+              <div className="flex items-start gap-3">
+                {/* 左侧：问题内容 */}
                 <div className="flex-1 min-w-0">
                   <p className="text-foreground text-sm font-medium truncate">
                     {session.question}
@@ -94,17 +98,38 @@ export function HistoryPage() {
                   <p className="text-muted-foreground/70 text-xs mt-1">
                     {session.cards.map(c => c.name).join(' · ')}
                   </p>
-                  <p className="text-muted-foreground/50 text-xs mt-1">
-                    {formatDate(session.createdAt)}
-                  </p>
                 </div>
-                <button
-                  onClick={(e) => handleDelete(session.id, e)}
-                  className="text-muted-foreground/50 hover:text-destructive opacity-0 group-hover:opacity-100 transition-opacity text-sm"
-                  title="删除"
-                >
-                  ✕
-                </button>
+                {/* 右侧：用户信息 + 时间 */}
+                <div className="flex flex-col items-end gap-1 shrink-0">
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-muted-foreground/70 text-xs">
+                      {session.user?.nickname || '匿名'}
+                    </span>
+                    {session.user?.avatarUrl ? (
+                      <img
+                        src={session.user.avatarUrl}
+                        alt=""
+                        className="w-6 h-6 rounded-full object-cover"
+                      />
+                    ) : (
+                      <div className="w-6 h-6 rounded-full bg-muted flex items-center justify-center text-muted-foreground">
+                        <PersonIcon className="w-3.5 h-3.5" />
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2 text-muted-foreground/50 text-xs">
+                    <span>{formatDate(session.createdAt)}</span>
+                    {user?.id === session.userId && (
+                      <button
+                        onClick={(e) => handleDelete(session.id, e)}
+                        className="hover:text-destructive opacity-0 group-hover:opacity-100 transition-opacity"
+                        title="删除"
+                      >
+                        删除
+                      </button>
+                    )}
+                  </div>
+                </div>
               </div>
             </Link>
           ))

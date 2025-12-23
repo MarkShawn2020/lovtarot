@@ -213,7 +213,11 @@ export function ProfilePage() {
       const blob = await getCroppedImage(selectedImage, croppedAreaPixels)
       if (blob) {
         const url = await uploadAvatarBlob(blob)
-        if (url) setAvatarUrl(url)
+        if (url) {
+          setAvatarUrl(url)
+          // 保存到数据库
+          await saveProfile({ avatarUrl: url })
+        }
       }
       setSelectedImage(null)
       setCroppedAreaPixels(null)
