@@ -59,6 +59,27 @@ export class StreamingTTS {
   }
 
   private async doSendText(text: string): Promise<void> {
+    // Mock 模式：使用浏览器内置 TTS
+    if (import.meta.env.VITE_DEV_MOCK === 'true') {
+      console.log('[TTS Streaming] Mock mode, using Web Speech API')
+      return new Promise<void>((resolve) => {
+        const utterance = new SpeechSynthesisUtterance(text)
+        utterance.lang = 'zh-CN'
+        utterance.rate = 1.2
+        utterance.onend = () => {
+          this.pendingRequests--
+          this.checkEnd()
+          resolve()
+        }
+        utterance.onerror = () => {
+          this.pendingRequests--
+          this.checkEnd()
+          resolve()
+        }
+        speechSynthesis.speak(utterance)
+      })
+    }
+
     const config = getConfig()
 
     try {
@@ -177,6 +198,9 @@ export class StreamingTTS {
       this.currentAudio = null
     }
 
+    // Mock 模式：停止浏览器 TTS
+    speechSynthesis.cancel()
+
     this.isPlaying = false
   }
 
@@ -184,12 +208,16 @@ export class StreamingTTS {
     if (this.currentAudio && this.isPlaying) {
       this.currentAudio.pause()
     }
+    // Mock 模式：暂停浏览器 TTS
+    speechSynthesis.pause()
   }
 
   resume(): void {
     if (this.currentAudio && !this.isStopped) {
       this.currentAudio.play().catch(console.error)
     }
+    // Mock 模式：恢复浏览器 TTS
+    speechSynthesis.resume()
   }
 
   get isSpeaking(): boolean {

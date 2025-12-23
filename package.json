@@ -6,6 +6,7 @@
   "packageManager": "pnpm@10.18.1",
   "scripts": {
     "dev": "vite",
+    "dev:mock": "VITE_DEV_MOCK=true vite",
     "dev:full": "vercel dev",
     "dev:api": "node scripts/dev-api.mjs",
     "build": "tsc -b && vite build",

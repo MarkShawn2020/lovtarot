@@ -27,11 +27,44 @@ const SYSTEM_PROMPT = `你是一位温暖、有智慧的塔罗牌解读师。你
 - 不要逐条列出，用自然的段落
 - 控制在 300-400 字左右`
 
+// Mock 响应（开发调试用）
+const MOCK_REASONING = `让我仔细看看这三张牌的组合...
+过去的牌显示了一些经历，现在的牌反映当下状态，未来的牌指向可能的方向。
+我需要将它们联系起来，给出有意义的解读。`
+
+const MOCK_READING = `亲爱的问卜者，感谢你带着这个问题来到这里。
+
+从过去的牌面来看，你经历了一段需要独自面对的时期。那些看似孤独的时刻，其实是在为你积蓄力量。
+
+现在的牌面告诉我，你正站在一个转折点上。内心的声音正在变得清晰，你开始明白什么对自己真正重要。
+
+未来的牌面充满希望。它在告诉你，当你跟随内心的指引，美好的事物自然会向你靠近。
+
+记住，塔罗牌不是预言，而是一面镜子。它反映的是你内心深处已经知道的答案。相信自己，你比想象中更有力量。`
+
+async function mockStream(onChunk: (text: string, type: ChunkType) => void): Promise<void> {
+  // 模拟 reasoning 阶段
+  for (const char of MOCK_REASONING) {
+    onChunk(char, 'reasoning')
+    await new Promise(r => setTimeout(r, 10))
+  }
+  // 模拟 content 阶段
+  for (const char of MOCK_READING) {
+    onChunk(char, 'content')
+    await new Promise(r => setTimeout(r, 15))
+  }
+}
+
 export async function getReadingStream(
   question: string,
   cards: TarotCard[],
   onChunk: (text: string, type: ChunkType) => void
 ): Promise<void> {
+  // 开发模式：使用 mock 响应
+  if (import.meta.env.VITE_DEV_MOCK === 'true') {
+    return mockStream(onChunk)
+  }
+
   const cardInfo = cards.map((card, i) => {
     const position = ['过去', '现在', '未来'][i]
     return `${position}：${card.name}（${card.nameEn}）- 关键词：${card.keywords.join('、')} - 基础含义：${card.meaning}`

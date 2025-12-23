@@ -9,6 +9,12 @@ const getConfig = () => ({
 
 // 生成 TTS 音频并缓存到 Supabase（失败时返回本地 Blob URL）
 export async function generateAndCacheAudio(sessionId: string, text: string): Promise<string | null> {
+  // Mock 模式跳过 TTS
+  if (import.meta.env.VITE_DEV_MOCK === 'true') {
+    console.log('[TTS Cache] Mock mode, skipping')
+    return null
+  }
+
   try {
     const config = getConfig()
 
