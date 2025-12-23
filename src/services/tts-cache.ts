@@ -18,7 +18,7 @@ export async function uploadAudioToCache(sessionId: string, audioData: Uint8Arra
 
   try {
     // 创建本地 Blob URL 作为备用
-    const blob = new Blob([audioData.buffer], { type: 'audio/mpeg' })
+    const blob = new Blob([new Uint8Array(audioData)], { type: 'audio/mpeg' })
     const localBlobUrl = URL.createObjectURL(blob)
 
     // 尝试上传到 Supabase Storage
