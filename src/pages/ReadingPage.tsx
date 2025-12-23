@@ -41,6 +41,8 @@ export function ReadingPage() {
   const handleReadingComplete = useCallback((reading: string, reasoning: string, thinkingSeconds: number) => {
     if (session) {
       updateReading(session.id, reading, reasoning, thinkingSeconds)
+      // 同步更新本地 session state，防止 cachedReading 为空导致重复请求
+      setSession(prev => prev ? { ...prev, reading, reasoning, thinkingSeconds } : prev)
     }
   }, [session])
 
