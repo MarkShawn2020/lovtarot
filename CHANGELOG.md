@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.5.0
+
+### Minor Changes
+
+- feat(tts): 支持按段落流式 TTS + 音频缓存
+
+  - StreamingTTS 支持按段落分割请求，边生成边播放
+  - 添加 onAudioReady 回调，所有音频就绪后合并上传缓存
+  - 修复 playTTS 缺少缓存回调的问题
+
 ## 0.4.0
 
 ### Minor Changes
