@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.6.0
+
+### Minor Changes
+
+- 历史记录显示发起人头像与昵称
+
 ## 0.5.0
 
 ### Minor Changes
