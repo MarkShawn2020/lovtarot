@@ -13,12 +13,20 @@ export function UserMenu() {
 
   if (!user) {
     return (
-      <Link
-        to={`/auth?redirect=${encodeURIComponent(location.pathname)}`}
-        className="text-muted-foreground hover:text-foreground text-sm transition-colors"
-      >
-        登录
-      </Link>
+      <div className="flex items-center gap-4">
+        <Link
+          to="/history"
+          className="text-muted-foreground hover:text-foreground text-sm transition-colors"
+        >
+          历史
+        </Link>
+        <Link
+          to={`/auth?redirect=${encodeURIComponent(location.pathname)}`}
+          className="text-muted-foreground hover:text-foreground text-sm transition-colors"
+        >
+          登录
+        </Link>
+      </div>
     )
   }
 
@@ -35,6 +43,18 @@ export function UserMenu() {
         <div className="px-3 py-2 border-b border-border">
           <p className="text-xs text-muted-foreground truncate">{user.email}</p>
         </div>
+        <Link
+          to="/history"
+          className="block px-3 py-2 text-sm text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
+        >
+          历史记录
+        </Link>
+        <Link
+          to="/profile"
+          className="block px-3 py-2 text-sm text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
+        >
+          个人中心
+        </Link>
         <button
           onClick={() => signOut()}
           className="w-full px-3 py-2 text-left text-sm text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors rounded-b-xl"
