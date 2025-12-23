@@ -72,8 +72,8 @@ export function ReadingPage() {
 
   return (
     <div className="w-full min-h-full">
-      {/* 顶部导航栏 */}
-      <nav className="flex items-center justify-between mb-6">
+      {/* 顶部导航栏 - 仅桌面端显示 */}
+      <nav className="hidden sm:flex items-center justify-between mb-6">
         <Link
           to="/"
           className="text-muted-foreground hover:text-foreground text-sm transition-colors"
@@ -119,14 +119,14 @@ export function ReadingPage() {
         {phase !== 'idle' && phase !== 'awaiting_confirmation' && (
           <button
             onClick={() => setStopTrigger(n => n + 1)}
-            className="px-4 py-2 border rounded-xl transition-colors text-destructive/70 border-destructive/30 hover:text-destructive hover:border-destructive/50"
+            className="px-4 py-2 border rounded-xl transition-colors text-destructive/70 border-destructive/30 hover:text-destructive hover:border-destructive/50 active:scale-95"
           >
             中断解读
           </button>
         )}
         <button
           onClick={takeScreenshot}
-          className="px-4 py-2 bg-primary text-primary-foreground hover:bg-primary/90 rounded-xl transition-colors"
+          className="px-4 py-2 bg-primary text-primary-foreground hover:bg-primary/90 rounded-xl transition-colors active:scale-95"
         >
           保存截图
         </button>

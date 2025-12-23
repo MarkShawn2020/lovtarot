@@ -8,6 +8,7 @@ import { HomePage } from './pages/HomePage.tsx'
 import { ReadingPage } from './pages/ReadingPage.tsx'
 import { HistoryPage } from './pages/HistoryPage.tsx'
 import { AuthPage } from './pages/AuthPage.tsx'
+import { ProfilePage } from './pages/ProfilePage.tsx'
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
@@ -18,6 +19,7 @@ createRoot(document.getElementById('root')!).render(
             <Route index element={<HomePage />} />
             <Route path="s/:id" element={<ReadingPage />} />
             <Route path="history" element={<HistoryPage />} />
+            <Route path="profile" element={<ProfilePage />} />
           </Route>
           <Route path="/auth" element={<AuthPage />} />
         </Routes>

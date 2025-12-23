@@ -2,6 +2,7 @@ import { Outlet } from 'react-router-dom'
 import { StarryBackground } from './components/StarryBackground'
 import { MusicControl } from './components/MusicControl'
 import { UserMenu } from './components/UserMenu'
+import { MobileTabBar } from './components/MobileTabBar'
 import './index.css'
 
 function App() {
@@ -10,12 +11,12 @@ function App() {
       <StarryBackground />
       <MusicControl />
 
-      {/* 顶部用户菜单 */}
-      <div className="absolute top-4 right-4 z-20">
+      {/* 顶部用户菜单 - 仅桌面端显示 */}
+      <div className="hidden sm:block absolute top-4 right-4 z-20">
         <UserMenu />
       </div>
 
-      <div className="flex-1 flex flex-col items-center justify-center px-4 py-4 pb-32 sm:pb-4 overflow-auto">
+      <div className="flex-1 flex flex-col items-center justify-center px-4 py-4 pb-20 sm:pb-4 overflow-auto">
         <main className="w-full max-w-2xl lg:max-w-4xl relative z-10">
           <Outlet />
         </main>
@@ -24,6 +25,9 @@ function App() {
           塔罗牌仅供娱乐和自我探索
         </p>
       </div>
+
+      {/* 移动端底部导航 */}
+      <MobileTabBar />
     </div>
   )
 }
