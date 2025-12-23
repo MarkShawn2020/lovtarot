@@ -53,6 +53,23 @@ export async function getSessions(): Promise<Session[]> {
   return (data as DbSession[]).map(toSession)
 }
 
+export async function getMySessions(): Promise<Session[]> {
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return []
+
+  const { data, error } = await supabase
+    .from('tarot_sessions')
+    .select('*')
+    .eq('user_id', user.id)
+    .order('created_at', { ascending: false })
+
+  if (error) {
+    console.error('Failed to fetch my sessions:', error)
+    return []
+  }
+  return (data as DbSession[]).map(toSession)
+}
+
 export async function getSession(id: string): Promise<Session | null> {
   const { data, error } = await supabase
     .from('tarot_sessions')
@@ -68,10 +85,13 @@ export async function getSession(id: string): Promise<Session | null> {
 }
 
 export async function createSession(question: string, cards: TarotCard[]): Promise<Session> {
+  const { data: { user } } = await supabase.auth.getUser()
+
   const session = {
     id: generateId(),
     question,
     cards,
+    user_id: user?.id ?? null,
     created_at: new Date().toISOString()
   }
 

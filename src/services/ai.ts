@@ -1,5 +1,6 @@
 import OpenAI from 'openai'
 import type { TarotCard } from '../data/tarot'
+import { getMyProfile, buildUserContext } from './profile'
 
 const client = new OpenAI({
   baseURL: 'https://zenmux.ai/api/v1',
@@ -9,23 +10,36 @@ const client = new OpenAI({
 
 export type ChunkType = 'reasoning' | 'content'
 
-const SYSTEM_PROMPT = `你是一位温暖、有智慧的塔罗牌解读师。你的解读风格是：
+function buildSystemPrompt(userContext: string): string {
+  const basePrompt = `你是一位温暖、有洞察力的塔罗解读师，正在进行一对一的面对面解读。
 
-1. **温暖治愈**：用温柔、包容的语气，让人感到被理解和支持
-2. **启发觉察**：帮助人看到当下的状态，而非预测未来
-3. **赋能希望**：引导人发现内在的力量和可能性
-4. **简洁有力**：每段话都有意义，避免空洞的套话
+解读风格：
+1. **对话感**：像朋友聊天一样自然，使用"你"直接称呼，可以用问卜者的称呼
+2. **温暖共情**：理解对方的处境，给予真诚的支持
+3. **启发觉察**：帮助看到当下的状态，而非简单预测
+4. **针对性**：结合问卜者的背景给出贴合实际的解读
+5. **简洁有力**：每段话都有意义，避免空洞的套话
 
 解读结构：
-- 先简短回应问题的核心
-- 解读三张牌（过去、现在、未来）的启示
-- 给出整体的洞见和鼓励
+- 先用称呼打招呼，简短回应问题
+- 解读三张牌（过去、现在、未来）的启示，结合问卜者背景
+- 给出整体的洞见和具体建议
 
 注意：
 - 用中文回答
 - 不要使用 markdown 格式
-- 不要逐条列出，用自然的段落
+- 不要逐条列出，用自然流畅的段落
 - 控制在 300-400 字左右`
+
+  if (userContext) {
+    return `${basePrompt}
+
+关于问卜者：
+${userContext}`
+  }
+
+  return basePrompt
+}
 
 // Mock 响应（开发调试用）
 const MOCK_REASONING = `让我仔细看看这三张牌的组合...
@@ -65,22 +79,27 @@ export async function getReadingStream(
     return mockStream(onChunk)
   }
 
+  // 获取用户信息以提供个性化解读
+  const profile = await getMyProfile()
+  const userContext = buildUserContext(profile)
+  const systemPrompt = buildSystemPrompt(userContext)
+
   const cardInfo = cards.map((card, i) => {
     const position = ['过去', '现在', '未来'][i]
     return `${position}：${card.name}（${card.nameEn}）- 关键词：${card.keywords.join('、')} - 基础含义：${card.meaning}`
   }).join('\n')
 
-  const userPrompt = `用户的问题：${question}
+  const userPrompt = `问题：${question}
 
 抽到的三张牌：
 ${cardInfo}
 
-请为用户做一个温暖、有洞见的解读，帮助 ta 看见当下的状态，获得启发和力量。`
+请为问卜者做一个温暖、有洞见的个性化解读。`
 
   const stream = await client.chat.completions.create({
     model: 'google/gemini-3-pro-preview',
     messages: [
-      { role: 'system', content: SYSTEM_PROMPT },
+      { role: 'system', content: systemPrompt },
       { role: 'user', content: userPrompt }
     ],
     temperature: 0.8,
