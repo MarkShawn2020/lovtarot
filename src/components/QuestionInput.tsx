@@ -47,6 +47,9 @@ export function QuestionInput({ onSubmit }: Props) {
             if (e.key === 'Tab' && !question) {
               e.preventDefault()
               setQuestion(placeholder)
+            } else if (e.key === 'Enter' && !e.shiftKey && question.trim()) {
+              e.preventDefault()
+              onSubmit(question.trim())
             }
           }}
           placeholder={placeholder}
