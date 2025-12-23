@@ -102,7 +102,7 @@ export async function getMySessions(): Promise<Session[]> {
     console.error('Failed to fetch my sessions:', error)
     return []
   }
-  return (data as DbSession[]).map(toSession)
+  return (data as DbSession[]).map(s => toSession(s))
 }
 
 export async function getSession(id: string): Promise<Session | null> {
